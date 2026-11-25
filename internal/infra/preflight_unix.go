@@ -4,14 +4,11 @@ package infra
 
 import (
 	"fmt"
-	"path/filepath"
 	"runtime"
 	"syscall"
 )
 
 const goos = runtime.GOOS
-
-func parentDir(p string) string { return filepath.Dir(p) }
 
 func statfsFree(path string) (uint64, error) {
 	var st syscall.Statfs_t

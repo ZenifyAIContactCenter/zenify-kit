@@ -1,11 +1,16 @@
 package infra
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 )
@@ -38,17 +43,21 @@ type HostProbe interface {
 	CanSudo() bool
 	MemTotalBytes() (uint64, error)
 	DiskFreeBytes(path string) (uint64, error)
-	// InstalledK3sVersion returns the installed k3s version and whether k3s is installed.
-	InstalledK3sVersion() (string, bool)
-	// K3sServicelbDisabled returns whether servicelb is disabled and whether k3s is installed.
-	K3sServicelbDisabled() (disabled, installed bool)
+	// InstalledK3sVersion returns the installed k3s version and whether k3s is
+	// installed. An error means the probe itself failed (k3s present but unusable).
+	InstalledK3sVersion() (version string, installed bool, err error)
+	// K3sServicelbDisabled reports whether the k3s config disables servicelb.
+	// A missing config means not disabled; an unreadable or invalid one is an error.
+	K3sServicelbDisabled() (bool, error)
 	EnvSet(key string) bool
 	HasCommand(name string) bool
-	GhLoggedIn() bool
-	// GhTokenAvailable reports whether `gh auth token` yields a token.
-	GhTokenAvailable() bool
-	// LookupKey reports whether key is set in the process env or the kit's personal env store.
-	LookupKey(name string) bool
+	// GhLoggedIn returns nil when `gh auth status` succeeds, else the failure with gh's stderr.
+	GhLoggedIn() error
+	// GhTokenAvailable returns nil when `gh auth token` yields a token (never exposed).
+	GhTokenAvailable() error
+	// LookupKey reports whether key is set in the process env or the kit's personal
+	// env store; an error means the store could not be read.
+	LookupKey(name string) (bool, error)
 }
 
 // tools `infra up` needs, in check order, with the install hint for each.
@@ -87,18 +96,26 @@ func Preflight(h HostProbe, r Requirements, wantK3s string) []Problem {
 		add("disk", fmt.Sprintf("need %d bytes free for %s, have %d", r.MinDiskBytes, rancherDir, free), "free disk space or grow the volume")
 	}
 
-	if ver, installed := h.InstalledK3sVersion(); installed {
+	if ver, installed, err := h.InstalledK3sVersion(); err != nil {
+		add("k3s", "cannot probe installed k3s: "+err.Error(), "check the k3s binary runs: k3s --version")
+	} else if installed {
 		if ver != wantK3s {
 			add("k3s", fmt.Sprintf("k3s %s installed, need %s", ver, wantK3s), "uninstall it (/usr/local/bin/k3s-uninstall.sh) so infra up installs the pinned version")
-		} else if disabled, _ := h.K3sServicelbDisabled(); !disabled {
+		} else if disabled, err := h.K3sServicelbDisabled(); err != nil {
+			add("k3s", "cannot read "+k3sConfigPath+": "+err.Error(), "fix the file so it is readable valid YAML")
+		} else if !disabled {
 			add("k3s", "k3s servicelb is not disabled", "add 'disable: [servicelb]' to "+k3sConfigPath+" (k3s flag --disable=servicelb) and restart k3s")
 		}
 	}
 
-	if !h.EnvSet(npmKeyName) && !h.GhTokenAvailable() {
-		add("build-secrets", npmKeyName+" is not set and gh auth token returned none", "export "+npmKeyName+" or run: gh auth login")
+	if !h.EnvSet(npmKeyName) {
+		if err := h.GhTokenAvailable(); err != nil {
+			add("build-secrets", npmKeyName+" is not set and gh auth token failed: "+err.Error(), "export "+npmKeyName+" or run: gh auth login")
+		}
 	}
-	if !h.LookupKey(taskforceKeyName) {
+	if ok, err := h.LookupKey(taskforceKeyName); err != nil {
+		add("build-secrets", "cannot look up "+taskforceKeyName+": "+err.Error(), "make the zenify env store readable or export "+taskforceKeyName)
+	} else if !ok {
 		add("build-secrets", taskforceKeyName+" is not set in the env or the zenify env store", "run: zenify env set "+taskforceKeyName)
 	}
 
@@ -107,8 +124,10 @@ func Preflight(h HostProbe, r Requirements, wantK3s string) []Problem {
 			add("tools", t.cmd+" not found", t.fix)
 		}
 	}
-	if h.HasCommand("gh") && !h.GhLoggedIn() {
-		add("tools", "gh is not logged in", "run: gh auth login")
+	if h.HasCommand("gh") {
+		if err := h.GhLoggedIn(); err != nil {
+			add("tools", "gh is not logged in: "+err.Error(), "run: gh auth login")
+		}
 	}
 	return ps
 }
@@ -152,7 +171,7 @@ func (realProbe) DiskFreeBytes(path string) (uint64, error) {
 		if _, err := os.Stat(p); err == nil {
 			return statfsFree(p)
 		}
-		parent := parentDir(p)
+		parent := filepath.Dir(p)
 		if parent == p {
 			return 0, fmt.Errorf("infra: no existing parent for %s", path)
 		}
@@ -160,57 +179,64 @@ func (realProbe) DiskFreeBytes(path string) (uint64, error) {
 	}
 }
 
-func (realProbe) InstalledK3sVersion() (string, bool) {
+func (realProbe) InstalledK3sVersion() (string, bool, error) {
 	out, err := exec.Command("k3s", "--version").Output()
+	if errors.Is(err, exec.ErrNotFound) {
+		return "", false, nil
+	}
 	if err != nil {
-		return "", false
+		return "", true, fmt.Errorf("k3s --version: %w", withStderr(err))
 	}
 	// first line: "k3s version v1.30.0+k3s1 (hash)"
 	f := strings.Fields(string(out))
 	if len(f) >= 3 && f[0] == "k3s" {
-		return f[2], true
+		return f[2], true, nil
 	}
-	return strings.TrimSpace(string(out)), true
+	return "", true, fmt.Errorf("unexpected k3s --version output %q", strings.TrimSpace(string(out)))
 }
 
-func (realProbe) K3sServicelbDisabled() (disabled, installed bool) {
-	if _, err := exec.LookPath("k3s"); err != nil {
-		return false, false
-	}
+func (realProbe) K3sServicelbDisabled() (bool, error) {
 	b, err := os.ReadFile(k3sConfigPath)
-	if err != nil {
-		return false, true
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
 	}
-	return configDisablesServicelb(string(b)), true
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", k3sConfigPath, err)
+	}
+	return configDisablesServicelb(b)
 }
 
-// configDisablesServicelb scans a k3s config.yaml for servicelb in its disable: list
-// (block list, inline list or scalar form).
-func configDisablesServicelb(cfg string) bool {
-	inDisable := false
-	for _, line := range strings.Split(cfg, "\n") {
-		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "disable:") {
-			rest := strings.TrimSpace(strings.TrimPrefix(t, "disable:"))
-			if rest == "" {
-				inDisable = true
-				continue
+// configDisablesServicelb parses a k3s config.yaml; disable may be a list or a
+// comma-separated string.
+func configDisablesServicelb(cfg []byte) (bool, error) {
+	var doc struct {
+		Disable any `yaml:"disable"`
+	}
+	if err := yaml.Unmarshal(cfg, &doc); err != nil {
+		return false, fmt.Errorf("parse yaml: %w", err)
+	}
+	var items []string
+	switch v := doc.Disable.(type) {
+	case nil:
+	case string:
+		items = strings.Split(v, ",")
+	case []any:
+		for _, e := range v {
+			s, ok := e.(string)
+			if !ok {
+				return false, fmt.Errorf("disable: list item %v is not a string", e)
 			}
-			return strings.Contains(rest, "servicelb")
+			items = append(items, strings.Split(s, ",")...)
 		}
-		if inDisable {
-			if strings.HasPrefix(t, "-") {
-				if strings.Contains(t, "servicelb") {
-					return true
-				}
-				continue
-			}
-			if t != "" && !strings.HasPrefix(t, "#") {
-				inDisable = false
-			}
+	default:
+		return false, fmt.Errorf("disable: unsupported type %T", v)
+	}
+	for _, it := range items {
+		if strings.TrimSpace(it) == "servicelb" {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 func (realProbe) EnvSet(key string) bool { return os.Getenv(key) != "" }
@@ -220,18 +246,38 @@ func (realProbe) HasCommand(name string) bool {
 	return err == nil
 }
 
-func (realProbe) GhLoggedIn() bool { return exec.Command("gh", "auth", "status").Run() == nil }
-
-func (realProbe) GhTokenAvailable() bool {
-	out, err := exec.Command("gh", "auth", "token").Output()
-	return err == nil && strings.TrimSpace(string(out)) != ""
+func (realProbe) GhLoggedIn() error {
+	_, err := exec.Command("gh", "auth", "status").Output()
+	return withStderr(err)
 }
 
-func (p realProbe) LookupKey(name string) bool {
-	f, err := devenv.Load(devenv.Path(p.workspace))
+func (realProbe) GhTokenAvailable() error {
+	out, err := exec.Command("gh", "auth", "token").Output()
 	if err != nil {
-		// unreadable store: fall back to the process env only; Preflight then reports the key missing
-		f = nil
+		return withStderr(err)
 	}
-	return devenv.Lookup(os.Getenv, f)(name) != ""
+	if strings.TrimSpace(string(out)) == "" {
+		return errors.New("gh auth token returned an empty token")
+	}
+	return nil
+}
+
+func (p realProbe) LookupKey(name string) (bool, error) {
+	path := devenv.Path(p.workspace)
+	f, err := devenv.Load(path)
+	if err != nil {
+		return false, fmt.Errorf("cannot read %s: %w", path, err)
+	}
+	return devenv.Lookup(os.Getenv, f)(name) != "", nil
+}
+
+// withStderr appends a command's trimmed stderr to its exec error (nil stays nil).
+func withStderr(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if msg := strings.TrimSpace(string(ee.Stderr)); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+	}
+	return err
 }
