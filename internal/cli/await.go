@@ -52,7 +52,8 @@ type awaitOption struct {
 // awaitQuestion is the one structured question put to people. Recommended is
 // the required index of the option the agent suggests; DefaultIfSilent is the index
 // applied when nobody answers in time, or nil to apply none. Audience is
-// "business" or "technical".
+// "business", "technical" or "reporter" (the person who reported the item; the
+// host picks who that is).
 type awaitQuestion struct {
 	Text            string        `json:"text"`
 	Situation       string        `json:"situation"`
@@ -135,8 +136,8 @@ func loadAwaitQuestions(path string) ([]awaitQuestion, error) {
 	if d := q.DefaultIfSilent; d != nil && (*d < 0 || *d >= len(q.Options)) {
 		return nil, fmt.Errorf("--questions: question 1 default_if_silent %d, want null or 0-%d", *d, len(q.Options)-1)
 	}
-	if q.Audience != "business" && q.Audience != "technical" {
-		return nil, fmt.Errorf("--questions: question 1 audience %q, want business or technical", q.Audience)
+	if q.Audience != "business" && q.Audience != "technical" && q.Audience != "reporter" {
+		return nil, fmt.Errorf("--questions: question 1 audience %q, want business, technical or reporter", q.Audience)
 	}
 	return qs, nil
 }

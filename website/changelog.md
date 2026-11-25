@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.82.0
+
+*2026-11-25*
+
+- **`zenify await question` nhận `audience: "reporter"`:** ngoài `business` và `technical`, câu hỏi giờ có thể gửi cho chính người đã báo việc (vd các bước tự xử lý khi lỗi do Zalo, Facebook hay trình duyệt của khách). Host (Zenie) chọn người nhận; giá trị khác vẫn bị từ chối với mã 2. Xem [Chế độ không người](/guides/autonomous).
+
 ## v0.81.0
 
 *2026-11-25*
