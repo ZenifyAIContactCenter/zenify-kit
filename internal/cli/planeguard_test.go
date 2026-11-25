@@ -128,7 +128,8 @@ func TestRunPlaneGuard_DenyStateWrite(t *testing.T) {
 		}
 	}
 	h := planeGuardRunOut(t, `{"tool_name":"mcp__zenify-plane__workitem","tool_input":{"action":"update","state":"abc"}}`).HookSpecificOutput
-	if h.PermissionDecision != "deny" || !strings.Contains(h.PermissionDecisionReason, "state do Zenie chuyển") { //znf:allow-lang
+	if h.PermissionDecision != "deny" || !strings.Contains(h.PermissionDecisionReason, "state do Zenie chuyển") || //znf:allow-lang
+		!strings.Contains(h.PermissionDecisionReason, "mcp__zenify-zenie__item_move") {
 		t.Fatalf("got %+v", h)
 	}
 }
