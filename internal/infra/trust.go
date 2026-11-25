@@ -3,7 +3,9 @@ package infra
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -34,34 +36,60 @@ func FetchCA(ctx context.Context, r Runner) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch CA: read secret %s/%s: %w", PlatformNamespace, caSecretName, err)
 	}
-	pem, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(out)))
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(out)))
 	if err != nil {
 		return nil, fmt.Errorf("fetch CA: decode %s: %w", caSecretKey, err)
 	}
-	if !bytes.Contains(pem, []byte("BEGIN CERTIFICATE")) {
-		return nil, fmt.Errorf("fetch CA: secret %s/%s has no certificate in %s", PlatformNamespace, caSecretName, caSecretKey)
+	clean, err := validateCA(raw)
+	if err != nil {
+		return nil, fmt.Errorf("fetch CA: secret %s/%s key %s: %w", PlatformNamespace, caSecretName, caSecretKey, err)
 	}
-	return pem, nil
+	return clean, nil
+}
+
+// validateCA requires exactly one PEM block, a parseable CA certificate, and
+// nothing else, and returns it re-encoded: a trusted root must never be a
+// byte-for-byte copy of unvalidated input.
+func validateCA(raw []byte) ([]byte, error) {
+	block, rest := pem.Decode(raw)
+	if block == nil {
+		return nil, errors.New("no PEM block")
+	}
+	if len(bytes.TrimSpace(rest)) != 0 {
+		return nil, errors.New("more than one PEM block or trailing data: want exactly one CA certificate")
+	}
+	if block.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("PEM block is %q, want CERTIFICATE", block.Type)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse certificate: %w", err)
+	}
+	if !cert.IsCA {
+		return nil, errors.New("certificate is not a CA")
+	}
+	return pem.EncodeToMemory(block), nil
 }
 
 func samePEM(a, b []byte) bool {
 	return bytes.Equal(bytes.Join(bytes.Fields(a), nil), bytes.Join(bytes.Fields(b), nil))
 }
 
-// InstallCA makes the host and the user's NSS database (Chrome, Firefox) trust
+// InstallCA makes the host and the user's NSS database (Chrome/Chromium; Firefox profiles keep their own store) trust
 // the CA, and keeps a copy at ~/.zenify/infra/ca.crt. changed is false when
 // everything already held this exact CA.
-func InstallCA(ctx context.Context, r Runner, home string, pem []byte) (changed bool, err error) {
-	if !bytes.Contains(pem, []byte("BEGIN CERTIFICATE")) {
-		return false, errors.New("install CA: empty or invalid PEM")
+func InstallCA(ctx context.Context, r Runner, home string, rawPEM []byte) (changed bool, err error) {
+	crt, err := validateCA(rawPEM)
+	if err != nil {
+		return false, fmt.Errorf("install CA: %w", err)
 	}
 
 	cur, exists, err := readRootFile(ctx, r, caSystemPath)
 	if err != nil {
 		return false, fmt.Errorf("install CA: %w", err)
 	}
-	if !exists || !samePEM(cur, pem) {
-		if err := writeRootFile(ctx, r, caSystemPath, pem); err != nil {
+	if !exists || !samePEM(cur, crt) {
+		if err := writeRootFile(ctx, r, caSystemPath, crt); err != nil {
 			return false, fmt.Errorf("install CA: %w", err)
 		}
 		if _, err := r.Run(ctx, nil, "sudo", "update-ca-certificates"); err != nil {
@@ -70,12 +98,12 @@ func InstallCA(ctx context.Context, r Runner, home string, pem []byte) (changed 
 		changed = true
 	}
 
-	nssChanged, err := installNSS(ctx, r, home, pem)
+	nssChanged, err := installNSS(ctx, r, home, crt)
 	if err != nil {
 		return changed, err
 	}
 
-	copied, err := saveCACopy(home, pem)
+	copied, err := saveCACopy(home, crt)
 	if err != nil {
 		return changed || nssChanged, err
 	}
@@ -83,16 +111,16 @@ func InstallCA(ctx context.Context, r Runner, home string, pem []byte) (changed 
 }
 
 // saveCACopy keeps a world-readable copy at ~/.zenify/infra/ca.crt.
-func saveCACopy(home string, pem []byte) (bool, error) {
+func saveCACopy(home string, crt []byte) (bool, error) {
 	copyPath := filepath.Join(infraDir(home), caCopyName)
 	have, err := os.ReadFile(copyPath) //nolint:gosec // G304 -- path under the user home, built from fixed names
-	if err == nil && samePEM(have, pem) {
+	if err == nil && samePEM(have, crt) {
 		return false, nil
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, fmt.Errorf("install CA: read %s: %w", copyPath, err)
 	}
-	if err := writeFileAtomic(home, caCopyName, pem); err != nil {
+	if err := writeFileAtomic(home, caCopyName, crt); err != nil {
 		return false, fmt.Errorf("install CA: %w", err)
 	}
 	if err := os.Chmod(copyPath, 0o644); err != nil { //nolint:gosec // G302 -- a public CA certificate, meant to be world-readable
@@ -104,7 +132,7 @@ func saveCACopy(home string, pem []byte) (bool, error) {
 func nssDir(home string) string { return filepath.Join(home, ".pki", "nssdb") }
 
 // installNSS adds the CA to the user's NSS DB, creating the DB when absent.
-func installNSS(ctx context.Context, r Runner, home string, pem []byte) (bool, error) {
+func installNSS(ctx context.Context, r Runner, home string, crt []byte) (bool, error) {
 	db := "sql:" + nssDir(home)
 	if _, err := os.Stat(filepath.Join(nssDir(home), "cert9.db")); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -119,7 +147,7 @@ func installNSS(ctx context.Context, r Runner, home string, pem []byte) (bool, e
 	}
 	have, err := r.Run(ctx, nil, "certutil", "-L", "-d", db, "-n", caNSSNick, "-a")
 	switch {
-	case err == nil && samePEM(have, pem):
+	case err == nil && samePEM(have, crt):
 		return false, nil
 	case err == nil:
 		// a different CA under our nickname (the CA was regenerated): replace it
@@ -129,7 +157,7 @@ func installNSS(ctx context.Context, r Runner, home string, pem []byte) (bool, e
 	case !nssNotFound(err):
 		return false, certutilErr("list NSS certs", err)
 	}
-	if _, err := r.Run(ctx, bytes.NewReader(pem), "certutil", "-A", "-d", db, "-t", "C,,", "-n", caNSSNick); err != nil {
+	if _, err := r.Run(ctx, bytes.NewReader(crt), "certutil", "-A", "-d", db, "-t", "C,,", "-n", caNSSNick); err != nil {
 		return false, certutilErr("add NSS cert", err)
 	}
 	return true, nil
@@ -148,7 +176,7 @@ func certutilErr(step string, err error) error {
 }
 
 func dnsUnit(domain string) ([]byte, error) {
-	if !domainRe.MatchString(domain) {
+	if len(domain) > 253 || !domainRe.MatchString(domain) {
 		return nil, fmt.Errorf("invalid domain %q", domain)
 	}
 	return renderAsset("dns.service.tmpl", map[string]string{"DNSClusterIP": DNSClusterIP, "Domain": domain})
@@ -178,7 +206,8 @@ func ConfigureSplitDNS(ctx context.Context, r Runner, domain string) (changed bo
 			return changed, fmt.Errorf("split dns: daemon-reload: %w", err)
 		}
 	} else if _, err := r.Run(ctx, nil, "sudo", "systemctl", "is-active", "--quiet", dnsUnitName); err != nil {
-		// exit 3 = inactive (failed earlier or stopped): start it again
+		// a positive exit code means inactive (stopped or failed earlier): start it again;
+		// anything else (sudo or systemctl could not run) is a real error
 		if exitCode(err) <= 0 {
 			return false, fmt.Errorf("split dns: is-active: %w", err)
 		}
@@ -205,7 +234,7 @@ func ConfigureSplitDNS(ctx context.Context, r Runner, domain string) (changed bo
 
 // RemoveTrustAndDNS undoes InstallCA and ConfigureSplitDNS for `down --purge`.
 // Each step ignores only "already gone".
-func RemoveTrustAndDNS(ctx context.Context, r Runner, _ string) error {
+func RemoveTrustAndDNS(ctx context.Context, r Runner, home string) error {
 	if _, exists, err := readRootFile(ctx, r, dnsUnitPath); err != nil {
 		return fmt.Errorf("remove dns: %w", err)
 	} else if exists {
@@ -235,9 +264,9 @@ func RemoveTrustAndDNS(ctx context.Context, r Runner, _ string) error {
 		}
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("remove CA: home dir: %w", err)
+	copyPath := filepath.Join(infraDir(home), caCopyName)
+	if err := os.Remove(copyPath); err != nil && !errors.Is(err, os.ErrNotExist) { // already gone
+		return fmt.Errorf("remove CA: rm %s: %w", copyPath, err)
 	}
 	if _, err := os.Stat(filepath.Join(nssDir(home), "cert9.db")); err != nil {
 		if errors.Is(err, os.ErrNotExist) {

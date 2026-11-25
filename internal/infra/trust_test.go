@@ -2,16 +2,46 @@ package infra
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
-const testPEM = "-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----\n"
+var testPEM = genCert(nil, true)
+
+// genCert returns a PEM self-signed certificate; isCA controls the CA flag.
+func genCert(_ *testing.T, isCA bool) string {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	tpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(time.Now().UnixNano()),
+		Subject:               pkix.Name{CommonName: "test"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  isCA,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		panic(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
 
 // Business rule: the cluster is addressed by the local kubeconfig and the CA
 // comes out of the platform secret, decoded.
@@ -111,6 +141,38 @@ func TestInstallCAIdempotent(t *testing.T) {
 	}
 }
 
+// Business rule: only one well-formed CA certificate may become a trusted root;
+// anything else that merely contains the PEM marker is refused before any host change.
+func TestInstallCARejectsUntrustworthyInput(t *testing.T) {
+	leaf := genCert(t, false)
+	cases := map[string]string{
+		"garbage with marker": "-----BEGIN CERTIFICATE-----\nnot-base64-der!!\n-----END CERTIFICATE-----\n",
+		"non-CA leaf":         leaf,
+		"two certs":           testPEM + genCert(t, true),
+		"trailing junk":       testPEM + "junk\n",
+		"wrong block type":    strings.ReplaceAll(testPEM, "CERTIFICATE", "PRIVATE KEY"),
+	}
+	for name, in := range cases {
+		r := &fakeRunner{}
+		if _, err := InstallCA(context.Background(), r, t.TempDir(), []byte(in)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+		if len(r.calls) != 0 {
+			t.Errorf("%s: touched the host: %v", name, r.calls)
+		}
+	}
+}
+
+// Business rule: the Secret's CA is validated at fetch time too.
+func TestFetchCARejectsNonCA(t *testing.T) {
+	r := &fakeRunner{respond: func(call) ([]byte, error) {
+		return []byte(base64.StdEncoding.EncodeToString([]byte(genCert(t, false)))), nil
+	}}
+	if _, err := FetchCA(context.Background(), r); err == nil {
+		t.Fatal("accepted a non-CA certificate")
+	}
+}
+
 // Business rule: a missing certutil must tell the user which package to install.
 func TestInstallCAMissingCertutil(t *testing.T) {
 	r := &fakeRunner{respond: func(c call) ([]byte, error) {
@@ -189,7 +251,7 @@ func TestConfigureSplitDNSRerun(t *testing.T) {
 
 // Business rule: the domain lands in a unit file, so a hostile value is refused.
 func TestConfigureSplitDNSRejectsBadDomain(t *testing.T) {
-	for _, d := range []string{"", "a b", "x'; rm -rf /; '", "Foo.test"} {
+	for _, d := range []string{"", "a b", "x'; rm -rf /; '", "Foo.test", strings.Repeat("a.", 130) + "test"} {
 		if _, err := ConfigureSplitDNS(context.Background(), &fakeRunner{}, d); err == nil {
 			t.Fatalf("accepted %q", d)
 		}
@@ -198,7 +260,7 @@ func TestConfigureSplitDNSRejectsBadDomain(t *testing.T) {
 
 // Business rule: purge ignores an already-gone cni0 but surfaces any other resolvectl failure.
 func TestRemoveTrustAndDNSErrors(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
 	files := map[string]string{dnsUnitPath: "x", caSystemPath: testPEM}
 	r := &fakeRunner{respond: func(c call) ([]byte, error) {
 		if c.line() == "sudo resolvectl revert cni0" {
@@ -206,7 +268,7 @@ func TestRemoveTrustAndDNSErrors(t *testing.T) {
 		}
 		return writable(files)(c)
 	}}
-	if err := RemoveTrustAndDNS(context.Background(), r, "quyentm.test"); err != nil {
+	if err := RemoveTrustAndDNS(context.Background(), r, home); err != nil {
 		t.Fatal(err)
 	}
 	if !r.ran("sudo systemctl disable --now "+dnsUnitName) || !r.ran("sudo rm -f "+caSystemPath) {
@@ -218,7 +280,7 @@ func TestRemoveTrustAndDNSErrors(t *testing.T) {
 		}
 		return writable(map[string]string{})(c)
 	}}
-	if err := RemoveTrustAndDNS(context.Background(), r, "quyentm.test"); err == nil {
+	if err := RemoveTrustAndDNS(context.Background(), r, home); err == nil {
 		t.Fatal("swallowed a revert failure")
 	}
 }
