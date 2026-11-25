@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.81.0
+
+*2026-11-25*
+
+- **Agent chuyển trạng thái việc qua Zenie, bạn duyệt từng lần:** kit thêm luật ask cho `mcp__zenify-zenie__item_move`, nên mỗi lần agent chuyển việc ZEN/OPS (Todo, In Progress, Done, Cancelled…) Claude Code đều hỏi bạn trước, kể cả khi bạn đã cho phép mọi tool của `zenify-zenie`. Zenie kiểm quyền và trạng thái rồi đồng bộ Plane. Tool chỉ xuất hiện khi Zenie bật cờ `ZENIE_MCP_ITEM_MOVE`; trước đó agent vẫn nhờ bạn kéo thẻ. Hook `plane-guard` vẫn chặn đặt state qua `zenify-plane`, giờ lời chặn chỉ agent sang `item_move`. Chạy `zenify up --apply` để nhận luật ask. Xem [Broker client](/guides/broker-client). ([#409](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/409))
+
 ## v0.80.0
 
 *2026-11-25*
