@@ -33,6 +33,7 @@ type BuildTarget struct {
 	Tag        string            // fixed tag; empty = derived from the commit (ImageTag)
 	Args       map[string]string // build args
 	Secrets    []string          // BuildKit secret ids; each is read from env key strings.ToUpper(id)
+	EnvArgs    []string          // keys of Args that differ per env; they are baked into the image, so they enter its tag
 }
 
 // ImageTag is sha-<7>, plus -dirty-<8 hex of sha256(diff)> for a dirty worktree.
@@ -46,6 +47,22 @@ func ImageTag(sha string, dirtyDiff []byte) string {
 	}
 	sum := sha256.Sum256(dirtyDiff)
 	return "sha-" + short + "-dirty-" + hex.EncodeToString(sum[:])[:8]
+}
+
+// VariantTag appends -v<8 hex of sha256 of the sorted k=v pairs of t.EnvArgs>
+// to tag, so the same commit built for another env gets its own image. A
+// target without EnvArgs keeps tag.
+func VariantTag(tag string, t BuildTarget) string {
+	if len(t.EnvArgs) == 0 {
+		return tag
+	}
+	pairs := make([]string, 0, len(t.EnvArgs))
+	for _, k := range t.EnvArgs {
+		pairs = append(pairs, k+"="+t.Args[k])
+	}
+	sort.Strings(pairs)
+	sum := sha256.Sum256([]byte(strings.Join(pairs, "\n")))
+	return tag + "-v" + hex.EncodeToString(sum[:])[:8]
 }
 
 // CoreTargets returns the images of a base env in build order: base-spa before
@@ -64,11 +81,12 @@ func CoreTargets(ws, domain, slug string) ([]BuildTarget, error) {
 			Secrets: []string{"npm_token", "npm_taskforcesh_token"}},
 		{Repo: "contact-center-web", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/contact-center-web",
 			Args:    map[string]string{"BUILD_MODE": "preview", "PREVIEW_SLUG": slug, "PREVIEW_DOMAIN": domain, "REGISTRY": RegistryHost, "BASE_TAG": BaseSpaTag},
+			EnvArgs: []string{"PREVIEW_SLUG", "PREVIEW_DOMAIN", "REGISTRY"},
 			Secrets: []string{"npm_token"}},
 		{Repo: "zenify-data-seed", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/zenify-data-seed"},
 	}
 	for _, t := range ts {
-		if _, err := os.Stat(filepath.Join(ws, "repos", t.Repo)); err != nil {
+		if _, err := os.Stat(filepath.Join(ws, "repos", t.Repo)); err != nil { //nolint:gosec // G703 -- t.Repo is a literal from the list above, ws is the kit's own workspace root
 			return nil, fmt.Errorf("build targets: repo %s: %w", t.Repo, err)
 		}
 	}
@@ -93,7 +111,7 @@ func BuildFromBase(ctx context.Context, r BuildRunner, ws string, t BuildTarget,
 	}
 	tag := t.Tag
 	if tag == "" {
-		tag = ImageTag(sha, nil)
+		tag = VariantTag(ImageTag(sha, nil), t)
 	}
 	t.Dir = filepath.Join(dir, t.Dir)
 	built, err := Build(ctx, r, ws, t, tag)
@@ -115,6 +133,9 @@ func BaseSource(ctx context.Context, r Runner, ws, repo, ref string) (dir, sha s
 		}
 		ref = cfg.BaseRef
 	}
+	if strings.HasPrefix(ref, "-") {
+		return "", "", nil, fmt.Errorf("base source %s: ref %q must not start with '-'", repo, ref)
+	}
 	if _, err := r.Run(ctx, nil, "git", "-C", root, "fetch", "origin"); err != nil {
 		return "", "", nil, fmt.Errorf("base source %s: fetch: %w", repo, err)
 	}
@@ -123,7 +144,7 @@ func BaseSource(ctx context.Context, r Runner, ws, repo, ref string) (dir, sha s
 		return "", "", nil, fmt.Errorf("base source %s: resolve %s: %w", repo, ref, err)
 	}
 	sha = strings.TrimSpace(string(out))
-	if len(sha) < 7 {
+	if len(sha) < 7 || strings.Trim(sha, "0123456789abcdef") != "" {
 		return "", "", nil, fmt.Errorf("base source %s: %s resolved to %q", repo, ref, sha)
 	}
 	home, err := os.UserHomeDir()
@@ -138,7 +159,11 @@ func BaseSource(ctx context.Context, r Runner, ws, repo, ref string) (dir, sha s
 		}
 		return nil
 	}
-	if _, err := os.Stat(dir); err == nil { // left by an interrupted run
+	// drop admin entries of temp worktrees whose dir is gone, so add below does not trip on one
+	if _, err := r.Run(ctx, nil, "git", "-C", root, "worktree", "prune"); err != nil {
+		return "", "", nil, fmt.Errorf("base source %s: worktree prune: %w", repo, err)
+	}
+	if _, err := os.Stat(dir); err == nil { //nolint:gosec // G703 -- dir is the kit's src dir + a repo literal + rev-parse hex (checked above); left by an interrupted run
 		if err := remove(); err != nil {
 			return "", "", nil, err
 		}

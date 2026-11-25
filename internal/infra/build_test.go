@@ -304,3 +304,49 @@ func TestBuildFromBaseUsesWorktreeJSONBaseRef(t *testing.T) {
 		t.Fatalf("tag = %q", res.Tag)
 	}
 }
+
+func webTarget(t *testing.T, ws, domain, slug string) BuildTarget {
+	t.Helper()
+	ts, err := CoreTargets(ws, domain, slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range ts {
+		if x.Repo == "contact-center-web" {
+			return x
+		}
+	}
+	t.Fatal("no web target")
+	return BuildTarget{}
+}
+
+func TestVariantTagSeparatesEnvs(t *testing.T) {
+	ws := fakeWorkspace(t)
+	base := ImageTag("abcdef1234", nil)
+	a1 := VariantTag(base, webTarget(t, ws, "quyentm.test", "base"))
+	a2 := VariantTag(base, webTarget(t, ws, "quyentm.test", "base"))
+	other := VariantTag(base, webTarget(t, ws, "quyentm.test", "feat-x"))
+	otherDomain := VariantTag(base, webTarget(t, ws, "other.test", "base"))
+	if a1 != a2 {
+		t.Fatalf("same env gave %q and %q: an unchanged web image would be rebuilt", a1, a2)
+	}
+	if a1 == other || a1 == otherDomain {
+		t.Fatalf("another slug/domain reused tag %q: that env would serve a bundle calling the wrong hosts", a1)
+	}
+	if !strings.HasPrefix(a1, "sha-abcdef1-v") || len(a1) != len("sha-abcdef1-v")+8 {
+		t.Fatalf("variant tag shape = %q", a1)
+	}
+	if got := VariantTag(base, beTarget(t)); got != base {
+		t.Fatalf("be has no per-env args, tag = %q, want %q", got, base)
+	}
+}
+
+func TestBaseSourceRejectsOptionLikeRef(t *testing.T) {
+	r := &fakeRunner{}
+	if _, _, _, err := BaseSource(context.Background(), r, fakeWorkspace(t), "zenify-data-seed", "--upload-pack=x"); err == nil {
+		t.Fatal("a ref starting with '-' reached git as an option")
+	}
+	if len(r.calls) != 0 {
+		t.Fatalf("git ran with an option-like ref: %v", r.calls)
+	}
+}
