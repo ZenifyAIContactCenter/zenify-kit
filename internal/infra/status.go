@@ -1,0 +1,193 @@
+package infra
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// NotInstalled is the status value of a component that is absent.
+const NotInstalled = "not installed"
+
+// AppState is an ArgoCD Application's sync and health.
+type AppState struct {
+	Sync   string `json:"sync"`
+	Health string `json:"health"`
+}
+
+// EnvStatus is one env's root Application and its URLs.
+type EnvStatus struct {
+	Slug   string   `json:"slug"`
+	Sync   string   `json:"sync"`
+	Health string   `json:"health"`
+	URLs   []string `json:"urls"`
+}
+
+// Report is the `zenify infra status --local` result.
+type Report struct {
+	K3s      string      `json:"k3s"`
+	ArgoCD   string      `json:"argocd"`
+	Platform AppState    `json:"platform"`
+	Envs     []EnvStatus `json:"envs"`
+	DNS      struct {
+		Host     string `json:"host"`
+		Resolves bool   `json:"resolves"`
+	} `json:"dns"`
+	CA struct {
+		Trusted bool `json:"trusted"`
+	} `json:"ca"`
+}
+
+type appList struct {
+	Items []struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+		appStatus
+	} `json:"items"`
+}
+
+// K3sInstalledVersion returns the installed k3s version, or "" when absent.
+func K3sInstalledVersion(ctx context.Context, r Runner) (string, error) {
+	return installedK3s(ctx, r)
+}
+
+func listApps(ctx context.Context, r Runner) (appList, error) {
+	out, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "applications", "-o", "json")
+	if err != nil {
+		return appList{}, fmt.Errorf("list applications: %w", err)
+	}
+	var l appList
+	if err := json.Unmarshal(out, &l); err != nil {
+		return appList{}, fmt.Errorf("list applications: parse: %w", err)
+	}
+	return l, nil
+}
+
+// ArgoInstalledVersion returns the argocd-server image tag, or "" when absent.
+func ArgoInstalledVersion(ctx context.Context, r Runner) (string, error) {
+	img, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "deploy", "argocd-server", "--ignore-not-found",
+		"-o", "jsonpath={.spec.template.spec.containers[0].image}")
+	if err != nil {
+		return "", fmt.Errorf("read argocd version: %w", err)
+	}
+	s := strings.TrimSpace(string(img))
+	if i := strings.LastIndex(s, ":"); i >= 0 {
+		return s[i+1:], nil
+	}
+	return s, nil
+}
+
+// Status reads the devbox: k3s, ArgoCD, the platform and env Applications, a
+// real DNS lookup of the first env's web host and the CA trust.
+func Status(ctx context.Context, r Runner, home, domain string) (Report, error) {
+	rep := Report{K3s: NotInstalled, ArgoCD: NotInstalled, Platform: AppState{"Missing", "Missing"}, Envs: []EnvStatus{}}
+	k3s, err := installedK3s(ctx, r)
+	if err != nil {
+		return rep, fmt.Errorf("status: %w", err)
+	}
+	if k3s != "" {
+		rep.K3s = k3s
+		argo, err := ArgoInstalledVersion(ctx, r)
+		if err != nil {
+			return rep, fmt.Errorf("status: %w", err)
+		}
+		if argo != "" {
+			rep.ArgoCD = argo
+			apps, err := listApps(ctx, r)
+			if err != nil {
+				return rep, fmt.Errorf("status: %w", err)
+			}
+			for _, it := range apps.Items {
+				st := AppState{it.Status.Sync.Status, it.Status.Health.Status}
+				switch name := it.Metadata.Name; {
+				case name == PlatformApp:
+					rep.Platform = st
+				case strings.HasPrefix(name, "env-"):
+					slug := strings.TrimPrefix(name, "env-")
+					rep.Envs = append(rep.Envs, EnvStatus{Slug: slug, Sync: st.Sync, Health: st.Health, URLs: EnvURLs(slug, domain)})
+				}
+			}
+		}
+	}
+	slug := BaseSlug
+	if len(rep.Envs) > 0 {
+		slug = rep.Envs[0].Slug
+	}
+	rep.DNS.Host = Host("web", slug, domain)
+	if rep.DNS.Resolves, err = DNSResolves(ctx, r, rep.DNS.Host); err != nil {
+		return rep, fmt.Errorf("status: %w", err)
+	}
+	if rep.CA.Trusted, err = CATrusted(ctx, r, home); err != nil {
+		return rep, fmt.Errorf("status: %w", err)
+	}
+	return rep, nil
+}
+
+// EnvApps lists the root env Applications (env-<slug>).
+func EnvApps(ctx context.Context, r Runner) ([]string, error) {
+	apps, err := listApps(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, it := range apps.Items {
+		if strings.HasPrefix(it.Metadata.Name, "env-") {
+			out = append(out, it.Metadata.Name)
+		}
+	}
+	return out, nil
+}
+
+// DeleteApp deletes the Application name and waits until its finalizer has
+// removed what it deployed. cascade adds the resources finalizer first, for an
+// Application created without one (local-platform).
+func DeleteApp(ctx context.Context, r Runner, name string, cascade bool) error {
+	if cascade {
+		patch := `{"metadata":{"finalizers":["resources-finalizer.argocd.argoproj.io"]}}`
+		if _, err := kubectl(ctx, r, nil, "-n", argoNS, "patch", "application", name, "--type", "merge", "-p", patch); err != nil {
+			return fmt.Errorf("delete application %s: add finalizer: %w", name, err)
+		}
+	}
+	if _, err := kubectl(ctx, r, nil, "-n", argoNS, "delete", "application", name, "--ignore-not-found", "--wait=true", "--timeout=10m"); err != nil {
+		return fmt.Errorf("delete application %s: %w", name, err)
+	}
+	return nil
+}
+
+// DeleteNamespace deletes ns and waits for it to go.
+func DeleteNamespace(ctx context.Context, r Runner, ns string) error {
+	if _, err := kubectl(ctx, r, nil, "delete", "namespace", ns, "--ignore-not-found", "--wait=true", "--timeout=10m"); err != nil {
+		return fmt.Errorf("delete namespace %s: %w", ns, err)
+	}
+	return nil
+}
+
+const k3sUninstall = "/usr/local/bin/k3s-uninstall.sh"
+
+// UninstallK3s runs k3s-uninstall.sh when present, then removes the API
+// firewall unit (after k3s, so its ports are never open while k3s runs).
+func UninstallK3s(ctx context.Context, r Runner) error {
+	if _, exists, err := readRootFile(ctx, r, k3sUninstall); err != nil {
+		return fmt.Errorf("uninstall k3s: %w", err)
+	} else if exists {
+		if _, err := r.Run(ctx, nil, "sudo", k3sUninstall); err != nil {
+			return fmt.Errorf("uninstall k3s: %w", err)
+		}
+	}
+	if _, exists, err := readRootFile(ctx, r, unitPath); err != nil {
+		return fmt.Errorf("remove firewall: %w", err)
+	} else if exists {
+		if _, err := r.Run(ctx, nil, "sudo", "systemctl", "disable", "--now", firewallUnit); err != nil {
+			return fmt.Errorf("remove firewall: disable: %w", err)
+		}
+	}
+	if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", unitPath, nftPath); err != nil {
+		return fmt.Errorf("remove firewall: rm: %w", err)
+	}
+	if _, err := r.Run(ctx, nil, "sudo", "systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("remove firewall: daemon-reload: %w", err)
+	}
+	return nil
+}

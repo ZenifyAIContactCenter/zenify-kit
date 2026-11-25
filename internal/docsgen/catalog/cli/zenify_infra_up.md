@@ -1,0 +1,27 @@
+---
+summary: Cài hoặc tiếp tục cài devbox k3s cục bộ tới env `base` chạy được, chạy lại an toàn.
+---
+## Khi nào dùng
+
+Lần đầu dựng devbox, hoặc chạy lại sau khi một bước lỗi giữa chừng. Bước đã xong được nhận ra và in `unchanged`, không cài lại k3s hay ArgoCD.
+
+## Kết quả
+
+Lệnh chạy preflight trước: mọi vấn đề (OS, systemd, sudo, RAM, đĩa, phiên bản k3s, `build-secrets` như `NPM_TASKFORCESH_TOKEN`, tool thiếu) được in cùng cách sửa, rồi lệnh thoát khác 0 trước khi đổi bất cứ thứ gì. Qua preflight, lệnh lần lượt: cài k3s, cài ArgoCD, lưu token `gh auth token` cho repo helm (không in token), apply `local-platform` và chờ Synced/Healthy, tin CA nội bộ (hệ thống + NSS), cấu hình split DNS cho `<domain>` trên `cni0` và luôn restart unit `zenify-infra-dns`, build `base-spa` rồi các image core vào registry nội bộ (bỏ qua tag đã có), apply env `base` pha 1 (chỉ mongo, mysql, redis, `local-env` để seed chạy trên DB rỗng), chờ `local-env-base-local`, rồi pha 2 (bật be, hub, web) và chờ từng Application. Env đã có app thì bỏ pha 1. Mỗi bước in một dòng `changed`/`unchanged`; lỗi nêu tên bước và thoát khác 0. Chỉ khi xong hết lệnh mới ghi `~/.zenify/infra/state.json` và in `https://web-base.<domain>` cùng email và domain đăng nhập seed (không in mật khẩu).
+
+Domain lấy từ `zenify infra config`, không có thì là `<github login>.test`.
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--local` | Bắt buộc: nhắm devbox k3s cục bộ. |
+| `--chart-ref` | Ref của repo helm cho chart platform và env. Mặc định là `chartRef` trong config (`main`). |
+| `--ref` | `<repo>=<ref>` để build repo đó từ ref khác `baseRef` của nó; lặp lại được. |
+
+## Ví dụ
+
+```bash
+zenify infra up --local
+zenify infra up --local --chart-ref feat/local-env --ref contact-center-web=origin/feat/x
+```

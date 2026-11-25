@@ -279,3 +279,50 @@ func RemoveTrustAndDNS(ctx context.Context, r Runner, home string) error {
 	}
 	return nil
 }
+
+// RestartSplitDNS re-runs the split DNS unit: cni0 may have been recreated
+// since it last ran, dropping its per-link settings.
+func RestartSplitDNS(ctx context.Context, r Runner) error {
+	if _, err := r.Run(ctx, nil, "sudo", "systemctl", "restart", dnsUnitName); err != nil {
+		return fmt.Errorf("split dns: restart: %w", err)
+	}
+	return nil
+}
+
+// CATrusted reports whether the system CA store and the user's NSS DB both
+// hold the local CA.
+func CATrusted(ctx context.Context, r Runner, home string) (bool, error) {
+	if _, err := os.Stat(caSystemPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("ca trust: stat %s: %w", caSystemPath, err)
+	}
+	if _, err := os.Stat(filepath.Join(nssDir(home), "cert9.db")); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("ca trust: stat NSS db: %w", err)
+	}
+	if _, err := r.Run(ctx, nil, "certutil", "-L", "-d", "sql:"+nssDir(home), "-n", caNSSNick); err != nil {
+		if nssNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("ca trust: certutil -L: %w", err)
+	}
+	return true, nil
+}
+
+// DNSResolves runs a real `resolvectl query host` and reports whether it
+// answers the ingress IP; a positive exit code means the name does not resolve.
+// Another local resolver (e.g. a *.test wildcard to 127.0.0.1) does not count.
+func DNSResolves(ctx context.Context, r Runner, host string) (bool, error) {
+	out, err := r.Run(ctx, nil, "resolvectl", "query", host)
+	if err != nil {
+		if exitCode(err) > 0 {
+			return false, nil
+		}
+		return false, fmt.Errorf("resolvectl query %s: %w", host, err)
+	}
+	return bytes.Contains(out, []byte(" "+TraefikClusterIP)), nil
+}
