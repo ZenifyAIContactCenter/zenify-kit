@@ -377,6 +377,9 @@ func TestKitAsk_UnionThenRemovesOnlyKit(t *testing.T) {
 func TestKitAskRules_MatchProdWritesOnly(t *testing.T) {
 	var res []*regexp.Regexp
 	for _, r := range KitAskRules {
+		if !strings.HasPrefix(r, "Bash(") {
+			continue
+		}
 		body := strings.TrimSuffix(strings.TrimPrefix(r, "Bash("), ")")
 		res = append(res, regexp.MustCompile("^"+strings.ReplaceAll(regexp.QuoteMeta(body), `\*`, ".*")+"$"))
 	}
@@ -405,6 +408,14 @@ func TestKitAskRules_MatchProdWritesOnly(t *testing.T) {
 		if hit(c) {
 			t.Errorf("%q prompts, want no ask", c)
 		}
+	}
+}
+
+// zenie's item_move writes a Plane state; ask beats the mcp__zenify-zenie__*
+// allow, so every call must prompt.
+func TestKitAskRules_ZenieItemMove(t *testing.T) {
+	if !slices.Contains(KitAskRules, "mcp__zenify-zenie__item_move") {
+		t.Fatal("KitAskRules lacks mcp__zenify-zenie__item_move")
 	}
 }
 

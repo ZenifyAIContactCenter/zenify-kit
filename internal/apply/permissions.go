@@ -20,8 +20,10 @@ import (
 // zenify-grafana, zenify-posthog and zenify-zenie DO get server-wide
 // wildcards: every tool is read-only on the far side (mcp-grafana runs
 // --disable-write with a Viewer service-account token; PostHog gets
-// x-posthog-read-only; zenie's MCP endpoint offers read tools only), so the
-// far side, not this prompt, is the write guard. The zenify- prefix is
+// x-posthog-read-only; zenie's MCP endpoint offers read tools only, except the
+// write tools listed in KitAskRules (item_move) and the two review tools, which
+// act only on the caller's own PRs), so the far side, not this prompt, is the
+// write guard. The zenify- prefix is
 // reserved for kit-registered servers, but the rule matches by name only: a
 // user's own server registered under one of these names is auto-approved too.
 var KitAllowRules = []string{
@@ -80,10 +82,13 @@ var KitSandboxExcluded = []string{
 // ok before --prd --write" into a real prompt; stg writes stay unprompted. Both
 // flag orders are listed, and the leading * also covers root flags. ssh asks
 // too: a command on a remote host is outside git-guard and cannot be undone.
+// zenie's item_move writes a work item's state, so it asks first: ask beats the
+// mcp__zenify-zenie__* allow.
 var KitAskRules = []string{
 	"Bash(zenify *data run*--prd*--write*)",
 	"Bash(zenify *data run*--write*--prd*)",
 	"Bash(ssh *)",
+	"mcp__zenify-zenie__item_move",
 }
 
 // KitDenyRule is the rule the kit unions into permissions.deny of
