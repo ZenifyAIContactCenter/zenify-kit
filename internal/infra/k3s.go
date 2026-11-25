@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
+	"strings"
 	"text/template"
+	"time"
 )
 
 //go:embed assets/*.tmpl
@@ -26,6 +29,9 @@ const (
 	k3sInstaller = "https://get.k3s.io"
 	// restartMarker exists while a k3s config change awaits a successful installer run.
 	restartMarker = "/etc/rancher/k3s/.zenify-restart-pending"
+	// mirrorHostsPath is containerd's config for the registry alias, rendered by
+	// k3s from registries.yaml (containerd config_path = .../containerd/certs.d).
+	mirrorHostsPath = "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/" + RegistryHost + "/hosts.toml"
 )
 
 // renderAsset executes the embedded template assets/<name> with data.
@@ -44,7 +50,7 @@ func renderAsset(name string, data any) ([]byte, error) {
 // What a changed host file needs to take effect.
 const (
 	applyLive     = iota // k3s's deploy controller watches the manifests dir
-	applyK3s             // k3s reads it only at start: rerun the installer (restarts k3s)
+	applyK3s             // k3s reads it only at start: restart k3s
 	applyFirewall        // reload the firewall unit
 )
 
@@ -73,11 +79,15 @@ func k3sHostFiles() []hostFile {
 	}
 }
 
+// nodeReadyTimeout bounds the wait for the node after a k3s restart.
+var nodeReadyTimeout = 3 * time.Minute
+
 // InstallK3s writes the k3s config, registry mirror, Traefik HelmChartConfig and
-// the API/kubelet firewall, then runs the pinned k3s installer when k3s is not
-// at the pinned version or its config or registry mirror changed. A restart
-// marker written before such a change and removed only after the installer
-// succeeded makes a run after a failed install retry the restart.
+// the API/kubelet firewall, runs the pinned k3s installer when k3s is not at the
+// pinned version, and restarts k3s when its config or registry mirror changed
+// or containerd has not loaded the mirror. A restart marker written before such
+// a change and removed only after the restart succeeded makes a run after a
+// failed restart retry it.
 func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 	_, pending, err := readRootFile(ctx, r, restartMarker)
 	if err != nil {
@@ -135,20 +145,82 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 	if err != nil {
 		return changed, fmt.Errorf("install k3s: %w", err)
 	}
+	if ver != "" && !pending {
+		// files can match while k3s still runs an older config (e.g. written by
+		// a run whose restart never happened): check what containerd loaded
+		loaded, err := mirrorLoaded(ctx, r)
+		if err != nil {
+			return changed, fmt.Errorf("install k3s: %w", err)
+		}
+		pending = !loaded
+	}
 	if ver == K3sVersion && !pending {
 		return changed, nil
 	}
-	script, err := r.Run(ctx, nil, "curl", "-sfL", k3sInstaller)
-	if err != nil {
-		return changed, fmt.Errorf("install k3s: download installer: %w", err)
+	if ver != K3sVersion {
+		script, err := r.Run(ctx, nil, "curl", "-sfL", k3sInstaller)
+		if err != nil {
+			return changed, fmt.Errorf("install k3s: download installer: %w", err)
+		}
+		if _, err := r.Run(ctx, bytes.NewReader(script), "sudo", "env", "INSTALL_K3S_VERSION="+K3sVersion, "sh", "-s", "-"); err != nil {
+			return true, fmt.Errorf("install k3s: run installer %s: %w", K3sVersion, err)
+		}
 	}
-	if _, err := r.Run(ctx, bytes.NewReader(script), "sudo", "env", "INSTALL_K3S_VERSION="+K3sVersion, "sh", "-s", "-"); err != nil {
-		return true, fmt.Errorf("install k3s: run installer %s: %w", K3sVersion, err)
+	// the installer skips the service restart when the binary and unit are
+	// unchanged, so config.yaml/registries.yaml changes need an explicit one
+	if _, err := r.Run(ctx, nil, "sudo", "systemctl", "restart", "k3s"); err != nil {
+		return true, fmt.Errorf("install k3s: restart k3s: %w", err)
+	}
+	if err := waitNodeReady(ctx, r); err != nil {
+		return true, fmt.Errorf("install k3s: %w", err)
+	}
+	loaded, err := mirrorLoaded(ctx, r)
+	if err != nil {
+		return true, fmt.Errorf("install k3s: %w", err)
+	}
+	if !loaded {
+		return true, fmt.Errorf("install k3s: k3s restarted but %s does not route %s to %s", mirrorHostsPath, RegistryHost, mirrorEndpoint())
 	}
 	if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", restartMarker); err != nil {
 		return true, fmt.Errorf("install k3s: remove restart marker: %w", err)
 	}
 	return true, nil
+}
+
+func mirrorEndpoint() string { return "http://" + RegistryClusterIP + ":5000" }
+
+// mirrorLoaded reports whether k3s rendered the registry mirror into
+// containerd's hosts.toml, which k3s writes only at start.
+func mirrorLoaded(ctx context.Context, r Runner) (bool, error) {
+	b, exists, err := readRootFile(ctx, r, mirrorHostsPath)
+	if err != nil {
+		return false, err
+	}
+	return exists && bytes.Contains(b, []byte(mirrorEndpoint())), nil
+}
+
+// waitNodeReady polls until every node reports Ready; read errors are expected
+// while the API server restarts.
+func waitNodeReady(ctx context.Context, r Runner) error {
+	ctx, cancel := context.WithTimeout(ctx, nodeReadyTimeout)
+	defer cancel()
+	var last string
+	for {
+		out, err := kubectl(ctx, r, nil, "get", "nodes", "-o",
+			`jsonpath={range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}`)
+		if err != nil {
+			last = err.Error()
+		} else {
+			st := strings.Fields(string(out))
+			if len(st) > 0 && !slices.ContainsFunc(st, func(s string) bool { return s != "True" }) {
+				return nil
+			}
+			last = "node Ready statuses " + strings.Join(st, ",")
+		}
+		if err := sleepCtx(ctx, pollInterval); err != nil {
+			return fmt.Errorf("wait node ready: not ready within %s (last: %s)", nodeReadyTimeout, last)
+		}
+	}
 }
 
 // installedK3s returns the installed k3s version, or "" when k3s is absent.
