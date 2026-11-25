@@ -42,6 +42,8 @@ Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task �
 
 `wt new` cũng đẩy branch lên `origin` (trừ hotfix) để việc hiện là đã bắt đầu. `wt rm`, `wt sweep` và `wt sweep --all` xóa branch remote đó chỉ khi đầu branch remote vẫn là commit mà `wt new` tạo branch ra (chưa ai commit lên đó), nên task chưa làm gì mất luôn branch remote khi bạn dọn tường minh. Phần tự dọn bên trong `wt new` giữ nguyên branch remote.
 
+Trên macOS, `wt rm` và `wt sweep` còn xoá thư mục Xcode DerivedData (`~/Library/Developer/Xcode/DerivedData/<App>-<hash>`) mà Xcode tạo cho workspace nằm trong worktree vừa xoá. Mỗi worktree của repo iOS có một thư mục như vậy, nặng vài GB, và Xcode không tự dọn. Thư mục của checkout chính hay worktree khác được giữ nguyên. Không có DerivedData thì lệnh bỏ qua bước này, và lỗi khi xoá chỉ in cảnh báo.
+
 Slug bắt đầu bằng `zen-<n>` hoặc `ops-<n>` (ví dụ `zen-123-login`, `ops-38-login`) thì `wt new` báo cho Plane bằng PAT của bạn (`PLANE_API_KEY`). Backlog và Todo chỉ cho biết việc nằm ngoài hay trong cycle, không cho biết ai giữ, nên kit xử lý hai cột như nhau. Việc `ZEN-<n>` hoặc `OPS-<n>` ở Backlog hoặc Todo mà chưa có ai được giao thì chuyển sang In Progress và thêm bạn vào assignee. Việc ở Backlog hoặc Todo mà chỉ có bạn trong assignee thì chỉ chuyển state; nếu còn người khác cùng trong assignee (watcher hoặc người giữ khác) thì kit không biết ai giữ nên chỉ in cảnh báo, zenie sẽ chuyển khi thấy branch được push. Việc ở Backlog hoặc Todo do người khác giữ, hoặc ở Intake, Done, Cancelled thì chỉ in cảnh báo. Việc đã In Progress trở đi thì không làm gì. Plane lỗi, thiếu PAT hay quá 8 giây không phản hồi cũng chỉ in cảnh báo: worktree vẫn được tạo.
 
 ### Variant: chọn kiểu checkout
