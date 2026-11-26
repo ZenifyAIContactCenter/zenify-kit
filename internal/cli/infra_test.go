@@ -98,6 +98,14 @@ func fakeInfra(t *testing.T, alreadyThere bool) (infraDeps, *[]string, *infraRun
 			rec("buildctl")
 			return "/bin/buildctl", nil
 		},
+		refreshApps: func(_ context.Context, _ infra.Runner, names []string) error {
+			rec("refresh " + strings.Join(names, ","))
+			return nil
+		},
+		syncApp: func(_ context.Context, _ infra.Runner, name string, _ time.Duration) (string, error) {
+			rec("sync " + name)
+			return "rev-abc123", nil
+		},
 		deployedTags: func(context.Context, infra.Runner, infra.Workspace, string) (map[string]string, error) {
 			return nil, nil
 		},
@@ -1012,5 +1020,51 @@ func TestBuildReason_PrefersTheRealError(t *testing.T) {
 	long := "npm error " + strings.Repeat("x", 400)
 	if got := buildReason(errors.New(long)); len([]rune(got)) != 200 || !strings.HasSuffix(got, "...") {
 		t.Errorf("reason len %d, want 200 ending in ...", len([]rune(got)))
+	}
+}
+
+// Config refresh (task 19b): before phase 2 the env's Applications are
+// hard-refreshed and the seed app is synced (also when phase 1 is skipped);
+// that commit lands as a pod annotation on the image apps only.
+func TestInfraUp_RefreshesAndSyncsSeedBeforePhase2(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		d, steps, _ := fakeInfra(t, true)
+		if existing {
+			d.appExists = func(_ context.Context, _ infra.Runner, name string) (bool, error) {
+				return name == infra.PlatformApp || name == "shop-api-base-local", nil
+			}
+		}
+		var phase2 []byte
+		d.apply = func(_ context.Context, _ infra.Runner, m []byte) (bool, error) {
+			if bytes.Contains(m, []byte("tag: sha-shop-api")) {
+				phase2 = m
+				*steps = append(*steps, "apply phase 2")
+			}
+			return true, nil
+		}
+		if _, _, err := runInfra(d, "up", "--local"); err != nil {
+			t.Fatal(err)
+		}
+		refresh, sync, apply := -1, indexOf(*steps, "sync app-config-base-local"), indexOf(*steps, "apply phase 2")
+		for i, s := range *steps {
+			if strings.HasPrefix(s, "refresh env-base,") && strings.Contains(s, "shop-api-base-local") {
+				refresh = i
+			}
+		}
+		if refresh < 0 || sync < 0 || apply < 0 || refresh >= sync || sync >= apply {
+			t.Fatalf("existing=%v want refresh < seed sync < phase-2 apply, got %d/%d/%d: %v", existing, refresh, sync, apply, *steps)
+		}
+		if !strings.Contains(string(phase2), "zenify.dev/config-revision: rev-abc123") {
+			t.Errorf("phase-2 values lack the synced revision:\n%s", phase2)
+		}
+	}
+	// a failed seed sync stops before the apps are applied, never swallowed
+	d, steps, _ := fakeInfra(t, true)
+	d.syncApp = func(context.Context, infra.Runner, string, time.Duration) (string, error) {
+		return "", errors.New("hook job failed")
+	}
+	_, _, err := runInfra(d, "up", "--local")
+	if err == nil || !strings.Contains(err.Error(), "hook job failed") || indexOf(*steps, "apply phase 2") >= 0 {
+		t.Fatalf("err=%v steps=%v", err, *steps)
 	}
 }

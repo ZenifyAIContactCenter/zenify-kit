@@ -120,10 +120,26 @@ func setDotted(m map[string]any, key string, v any) error {
 	return nil
 }
 
+// ConfigRevisionAnnotation is the pod annotation (values key podAnnotations,
+// owned by the kit like image.tag) holding the helm commit the env config was
+// synced at.
+const ConfigRevisionAnnotation = "zenify.dev/config-revision"
+
+// SeedAppName is the child Application of the seed app of w in env slug, or ""
+// when the seed app is not in w (outside the profile).
+func SeedAppName(w Workspace, slug string) string {
+	for _, a := range w.EnvApps {
+		if a.Seed {
+			return ChildAppName(a.Key, slug)
+		}
+	}
+	return ""
+}
+
 // appValues returns the values the kit owns for app a: for the seed app its
 // slug, domain and seed.tag; for an app with an image its image.tag and the
 // ingress hosts lists; nothing for a datastore.
-func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[string]string, kept map[string]string) (map[string]any, error) {
+func appValues(w Workspace, a WorkspaceApp, slug, domain, configRev string, images map[string]string, kept map[string]string) (map[string]any, error) {
 	if a.Seed {
 		tag := images[w.Seed.Repo]
 		if tag == "" {
@@ -142,6 +158,10 @@ func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[stri
 		return nil, fmt.Errorf("no image tag for %s", a.Repo)
 	}
 	v := map[string]any{"image": map[string]any{"tag": tag}}
+	if configRev != "" {
+		// a new helm commit changes the pod template, so the pods roll with their config
+		v["podAnnotations"] = map[string]any{ConfigRevisionAnnotation: configRev}
+	}
 	for _, in := range a.Ingress {
 		hosts := []any{map[string]any{
 			"host":  Host(a.Svc, slug, domain),
@@ -162,6 +182,12 @@ func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[stri
 // active profile rendered for this phase gets enabled: true explicitly (the
 // chart map may default it off); every other app is enabled: false.
 func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]string, phase int, skip map[string]bool, kept map[string]string) ([]byte, error) {
+	return RenderEnvAppRev(w, slug, domain, chartRef, "", images, phase, skip, kept)
+}
+
+// RenderEnvAppRev is RenderEnvApp where every app with an image also gets
+// podAnnotations zenify.dev/config-revision=configRev (omitted when empty).
+func RenderEnvAppRev(w Workspace, slug, domain, chartRef, configRev string, images map[string]string, phase int, skip map[string]bool, kept map[string]string) ([]byte, error) {
 	if phase != 1 && phase != 2 {
 		return nil, fmt.Errorf("env app: phase %d, want 1 or 2", phase)
 	}
@@ -184,7 +210,7 @@ func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]
 			entry["enabled"] = false
 		} else {
 			entry["enabled"] = true
-			v, err := appValues(w, a, slug, domain, images, kept)
+			v, err := appValues(w, a, slug, domain, configRev, images, kept)
 			if err != nil {
 				return nil, fmt.Errorf("env app: %w", err)
 			}

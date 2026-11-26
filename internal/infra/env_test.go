@@ -321,3 +321,35 @@ func TestForProfile_FiltersAppsAndRender(t *testing.T) {
 		t.Errorf("SkippedApps(core) = %v, want none: the app is not in the profile", got)
 	}
 }
+
+// Pods must roll when the helm config changes: every app with an image carries
+// the synced commit as a pod annotation; datastores and the seed do not.
+func TestRenderEnvAppRev_PodAnnotationOnImageApps(t *testing.T) {
+	b, err := RenderEnvAppRev(testWS(t), "base", "zenify.test", "main", "c0ffee1", testImages, 2, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a renderedApp
+	if err := yaml.Unmarshal(b, &a); err != nil {
+		t.Fatal(err)
+	}
+	vals := a.Spec.Source.Helm.ValuesObject
+	for _, k := range []string{"shop-api", "shop-gateway", "shop-web"} {
+		if got := dig(vals, k, "values", "podAnnotations", ConfigRevisionAnnotation); got != "c0ffee1" {
+			t.Errorf("%s config-revision = %v, want c0ffee1", k, got)
+		}
+	}
+	for _, k := range []string{"mongo", "mysql", "redis", "app-config"} {
+		if dig(vals, k, "values", "podAnnotations") != nil {
+			t.Errorf("%s must not get podAnnotations: %v", k, vals[k])
+		}
+	}
+	if got := SeedAppName(testWS(t), "base"); got != "app-config-base-local" {
+		t.Errorf("SeedAppName = %q", got)
+	}
+	// RenderEnvApp without a revision adds no annotation
+	b, _ = RenderEnvApp(testWS(t), "base", "zenify.test", "main", testImages, 2, nil, nil)
+	if strings.Contains(string(b), "podAnnotations") {
+		t.Error("podAnnotations rendered without a revision")
+	}
+}

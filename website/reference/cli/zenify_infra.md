@@ -40,7 +40,7 @@ File nằm trong store dùng chung của team nên kit kiểm mọi giá trị t
 - `builds[].repo`: khớp `^[a-z0-9][a-z0-9._-]*$`, không có `..`, không trùng; `context` và `dockerfile`: đường dẫn tương đối nằm trong repo; `image`: phần chữ thường `[a-z0-9]` nối bằng `.`, `_`, `-`, `/`; `tag`: khớp `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`; `secrets[]`, `optionalSecrets[]`: khớp `^[a-z0-9_]+$`.
 - `scan.exclude[]`: khớp `^[a-z0-9][a-z0-9._-]*$`, không có `..`; `scan.optionalSecrets[]`: khớp `^[a-z0-9_]+$`; `scan.args`: key không rỗng. Thư mục trong `repos/` có tên không hợp lệ bị bỏ qua kèm cảnh báo.
 - `builds[].image` không trùng giữa hai build; `tag` cố định không đi cùng `envArgs`.
-- `envApps[]`: `key` không được là `env`, `environment`, `global`, `apps` (là values của app-of-apps); app `seed` ở `phase: 1` và không có `repo`, `svc`, `ingress`; app có `repo` ở `phase: 2` (chạy sau seed); `ingress[].values` không trỏ vào `image` (key `image.tag` của kit); mỗi giá trị của `profiles[]` là `core` hoặc `full`.
+- `envApps[]`: `key` không được là `env`, `environment`, `global`, `apps` (là values của app-of-apps); app `seed` ở `phase: 1` và không có `repo`, `svc`, `ingress`; app có `repo` ở `phase: 2` (chạy sau seed); `ingress[].values` không trỏ vào `image` (key `image.tag` của kit) hay `podAnnotations` (key `zenify.dev/config-revision` của kit); mỗi giá trị của `profiles[]` là `core` hoặc `full`.
 - `envApps[].key` và `svc`: nhãn DNS (`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`) dài tối đa 30 byte, để `<svc>-<slug>` với slug dài nhất (32) vẫn ≤ 63; `key` không trùng và không bắt đầu bằng `env-`; `ingress[].path` bắt đầu bằng `/`.
 
 ## Ví dụ

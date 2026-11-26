@@ -246,6 +246,7 @@ func (w Workspace) validate() error {
 			need(in.Values != "" && strings.HasPrefix(in.Path, "/"), fmt.Sprintf("%singress[%d].values/path (path starts with /)", p, j))
 			// image.tag is the kit's own key in the same values map
 			need(in.Values != "image" && !strings.HasPrefix(in.Values, "image."), fmt.Sprintf("%singress[%d].values (image is the kit's image.tag key)", p, j))
+			need(in.Values != "podAnnotations" && !strings.HasPrefix(in.Values, "podAnnotations."), fmt.Sprintf("%singress[%d].values (podAnnotations is the kit's config-revision key)", p, j))
 		}
 		if a.Seed {
 			seeds++

@@ -50,6 +50,8 @@ type infraDeps struct {
 	build          func(ctx context.Context, br infra.BuildRunner, ws string, t infra.BuildTarget, refs map[string]string) (infra.BuildResult, error)
 	apply          func(ctx context.Context, r infra.Runner, manifest []byte) (bool, error)
 	appExists      func(ctx context.Context, r infra.Runner, name string) (bool, error)
+	refreshApps    func(ctx context.Context, r infra.Runner, names []string) error
+	syncApp        func(ctx context.Context, r infra.Runner, name string, timeout time.Duration) (string, error)
 	deployedTags   func(ctx context.Context, r infra.Runner, w infra.Workspace, slug string) (map[string]string, error)
 	applyEnvCA     func(ctx context.Context, r infra.Runner, slug string, pem []byte) error
 	saveState      func(home string, s *infra.State) error
@@ -104,6 +106,8 @@ func defaultInfraDeps() infraDeps {
 		build:           infra.BuildFromBase,
 		apply:           infra.Apply,
 		appExists:       infra.AppExists,
+		refreshApps:     infra.RefreshApps,
+		syncApp:         infra.SyncApp,
 		saveState:       infra.SaveState,
 		status:          infra.Status,
 		show:            infra.Show,
@@ -689,13 +693,34 @@ func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace,
 					}
 				}
 			}
-			m, err := infra.RenderEnvApp(w, slug, domain, chartRef, images, phase, skip, kept)
+			// ArgoCD may serve a cached helm commit; refresh before anything reads it
+			refresh := append([]string{root}, infra.ChildApps(w, slug, 2, nil)...)
+			configRev := ""
+			if phase == 2 {
+				if err := d.refreshApps(ctx, r, refresh); err != nil {
+					return stepOutcome{}, err
+				}
+				// auto-sync runs no hooks when nothing in the diff changed: sync the
+				// seed app (its PreSync hook adds new Secret keys) before the apps start
+				if seed := infra.SeedAppName(w, slug); seed != "" {
+					var err error
+					if configRev, err = d.syncApp(ctx, r, seed, envTimeout); err != nil {
+						return stepOutcome{}, err
+					}
+				}
+			}
+			m, err := infra.RenderEnvAppRev(w, slug, domain, chartRef, configRev, images, phase, skip, kept)
 			if err != nil {
 				return stepOutcome{}, err
 			}
 			changed, err := d.apply(ctx, r, m)
 			if err != nil {
 				return stepOutcome{}, err
+			}
+			if phase == 1 {
+				if err := d.refreshApps(ctx, r, refresh); err != nil {
+					return stepOutcome{}, err
+				}
 			}
 			for _, name := range append([]string{root}, infra.ChildApps(w, slug, phase, skip)...) {
 				if err := d.waitApp(ctx, r, name, envTimeout); err != nil {

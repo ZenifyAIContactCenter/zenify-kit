@@ -18,6 +18,7 @@ func TestWorkspaceValidateRejectsUnsafeValues(t *testing.T) {
 		{"fixture is valid", func(*Workspace) {}, ""},
 		{"envApp repo outside builds is valid (scanned)", func(w *Workspace) { w.EnvApps[4].Repo = "scanned-svc" }, ""},
 		{"envApp repo traversal", func(w *Workspace) { w.EnvApps[4].Repo = "a..b" }, "envApps[4].repo"},
+		{"ingress over podAnnotations", func(w *Workspace) { w.EnvApps[4].Ingress[0].Values = "podAnnotations.x" }, "envApps[4].ingress[0].values (podAnnotations is the kit's config-revision key)"},
 		{"profile full is valid", func(w *Workspace) { w.EnvApps[4].Profiles = []string{"full"} }, ""},
 		{"profile unknown", func(w *Workspace) { w.EnvApps[4].Profiles = []string{"core", "huge"} }, `envApps[4].profiles "huge" (core or full)`},
 		// a dev must learn the seed login somewhere: the password itself or where it is documented

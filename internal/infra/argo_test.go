@@ -263,3 +263,99 @@ func TestWaitAppWaitsForAppToBeCreated(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// ArgoCD serves a cached helm commit until hard-refreshed: every env
+// Application that exists gets the annotation, one not created yet is left out.
+func TestRefreshApps_AnnotatesExistingOnly(t *testing.T) {
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if strings.Contains(c.line(), "get applications") {
+			return []byte(`{"items":[{"metadata":{"name":"env-base"}},{"metadata":{"name":"shop-api-base-local"}}]}`), nil
+		}
+		return nil, nil
+	}}
+	if err := RefreshApps(context.Background(), r, []string{"env-base", "shop-api-base-local", "shop-web-base-local"}); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range r.calls {
+		if strings.Contains(c.line(), " annotate ") {
+			if !strings.Contains(c.line(), "argocd.argoproj.io/refresh=hard") || !strings.Contains(c.line(), "--kubeconfig "+K3sKubeconfig) {
+				t.Errorf("annotate call = %s", c.line())
+			}
+			got = append(got, c.args[len(c.args)-3])
+		}
+	}
+	if strings.Join(got, ",") != "env-base,shop-api-base-local" {
+		t.Errorf("annotated %v, want env-base and shop-api-base-local only", got)
+	}
+	r.respond = func(c call) ([]byte, error) {
+		if strings.Contains(c.line(), " annotate ") {
+			return nil, errors.New("forbidden")
+		}
+		return []byte(`{"items":[{"metadata":{"name":"env-base"}}]}`), nil
+	}
+	if err := RefreshApps(context.Background(), r, []string{"env-base"}); err == nil || !strings.Contains(err.Error(), "forbidden") {
+		t.Errorf("annotate failure must surface: %v", err)
+	}
+}
+
+// The sync must be the operation we started: a Succeeded operationState left
+// from before the patch (same startedAt) is not accepted, and the returned
+// revision is status.sync.revision after the app is Synced/Healthy.
+func TestSyncApp_WaitsForItsOwnOperation(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	app := func(started, phase string) string {
+		return `{"spec":{"source":{"targetRevision":"feat/local-env"}},"status":{"sync":{"status":"Synced","revision":"c0ffee1","comparedTo":{"source":{"targetRevision":"feat/local-env"}}},"health":{"status":"Healthy"},` +
+			`"operationState":{"phase":"` + phase + `","startedAt":"` + started + `"}}}`
+	}
+	patched, reads := false, 0
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		switch {
+		case strings.Contains(c.line(), " patch "):
+			patched = true
+			return nil, nil
+		case strings.Contains(c.line(), " get application "):
+			if !patched {
+				return []byte(app("2026-11-26T01:00:00Z", "Succeeded")), nil
+			}
+			if reads++; reads < 3 {
+				return []byte(app("2026-11-26T01:00:00Z", "Succeeded")), nil // stale: before our operation
+			}
+			return []byte(app("2026-11-26T01:05:00Z", "Succeeded")), nil
+		}
+		return nil, nil
+	}}
+	rev, err := SyncApp(context.Background(), r, "app-config-base-local", time.Second)
+	if err != nil || rev != "c0ffee1" {
+		t.Fatalf("rev=%q err=%v", rev, err)
+	}
+	if reads < 3 {
+		t.Errorf("returned after %d post-patch reads: accepted the stale operation", reads)
+	}
+	for _, c := range r.calls {
+		if strings.Contains(c.line(), " patch ") {
+			for _, want := range []string{"application app-config-base-local", "--type merge", `"revision":"feat/local-env"`, `"username":"zenify"`} {
+				if !strings.Contains(c.line(), want) {
+					t.Errorf("patch %q lacks %q", c.line(), want)
+				}
+			}
+		}
+	}
+
+	patched, reads = false, 0
+	r = &fakeRunner{respond: func(c call) ([]byte, error) {
+		if strings.Contains(c.line(), " patch ") {
+			patched = true
+			return nil, nil
+		}
+		if patched {
+			return []byte(`{"spec":{"source":{"targetRevision":"main"}},"status":{"operationState":{"phase":"Failed","message":"hook job failed","startedAt":"2026-11-26T02:00:00Z"}}}`), nil
+		}
+		return []byte(app("2026-11-26T01:00:00Z", "Succeeded")), nil
+	}}
+	if _, err := SyncApp(context.Background(), r, "app-config-base-local", time.Second); err == nil || !strings.Contains(err.Error(), "hook job failed") {
+		t.Errorf("a failed operation must surface its message: %v", err)
+	}
+}

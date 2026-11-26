@@ -127,6 +127,7 @@ type appStatus struct {
 	Status struct {
 		Sync struct {
 			Status     string `json:"status"`
+			Revision   string `json:"revision"`
 			ComparedTo struct {
 				Source json.RawMessage `json:"source"`
 			} `json:"comparedTo"`
@@ -140,8 +141,9 @@ type appStatus struct {
 			Message string `json:"message"`
 		} `json:"conditions"`
 		OperationState struct {
-			Phase   string `json:"phase"`
-			Message string `json:"message"`
+			Phase     string `json:"phase"`
+			Message   string `json:"message"`
+			StartedAt string `json:"startedAt"`
 		} `json:"operationState"`
 		Resources []struct {
 			Kind      string `json:"kind"`
@@ -254,4 +256,106 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	case <-time.After(d):
 		return nil
 	}
+}
+
+// getApp reads one Application; a missing one is an error.
+func getApp(ctx context.Context, r Runner, name string) (appStatus, error) {
+	out, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "application", name, "--ignore-not-found", "-o", "json")
+	if err != nil {
+		return appStatus{}, fmt.Errorf("read application %s: %w", name, err)
+	}
+	if len(bytes.TrimSpace(out)) == 0 {
+		return appStatus{}, fmt.Errorf("application %s not found", name)
+	}
+	var a appStatus
+	if err := json.Unmarshal(out, &a); err != nil {
+		return appStatus{}, fmt.Errorf("read application %s: parse: %w", name, err)
+	}
+	return a, nil
+}
+
+// RefreshApps hard-refreshes the Applications of names that exist (ArgoCD
+// otherwise keeps serving a cached helm commit); one that does not exist yet
+// is created from the current repo anyway and is left out.
+func RefreshApps(ctx context.Context, r Runner, names []string) error {
+	apps, err := listApps(ctx, r)
+	if err != nil {
+		return fmt.Errorf("refresh applications: %w", err)
+	}
+	have := map[string]bool{}
+	for _, it := range apps.Items {
+		have[it.Metadata.Name] = true
+	}
+	for _, n := range names {
+		if !have[n] {
+			continue
+		}
+		report(ctx, "refreshing application %s", n)
+		if _, err := kubectl(ctx, r, nil, "-n", argoNS, "annotate", "application", n, "argocd.argoproj.io/refresh=hard", "--overwrite"); err != nil {
+			return fmt.Errorf("refresh application %s: %w", n, err)
+		}
+	}
+	return nil
+}
+
+// SyncApp starts a sync operation on Application name at its target revision
+// (auto-sync runs no hooks when nothing in the diff changed), waits for that
+// operation, not an earlier one, to Succeed, then for Synced/Healthy, and
+// returns the commit it synced (status.sync.revision).
+func SyncApp(ctx context.Context, r Runner, name string, timeout time.Duration) (string, error) {
+	report(ctx, "syncing application %s", name)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	a, err := getApp(ctx, r, name)
+	if err != nil {
+		return "", fmt.Errorf("sync app: %w", err)
+	}
+	var src struct {
+		TargetRevision string `json:"targetRevision"`
+	}
+	if err := json.Unmarshal(a.Spec.Source, &src); err != nil || src.TargetRevision == "" {
+		return "", fmt.Errorf("sync app %s: no spec.source.targetRevision (%v)", name, err)
+	}
+	prior := a.Status.OperationState.StartedAt
+	patch, err := json.Marshal(map[string]any{"operation": map[string]any{
+		"initiatedBy": map[string]any{"username": "zenify"},
+		"sync":        map[string]any{"revision": src.TargetRevision},
+	}})
+	if err != nil {
+		return "", fmt.Errorf("sync app %s: encode patch: %w", name, err)
+	}
+	if _, err := kubectl(ctx, r, nil, "-n", argoNS, "patch", "application", name, "--type", "merge", "-p", string(patch)); err != nil {
+		return "", fmt.Errorf("sync app %s: start operation: %w", name, err)
+	}
+	for {
+		cur, err := getApp(ctx, r, name)
+		if err != nil {
+			return "", fmt.Errorf("sync app: %w", err)
+		}
+		op := cur.Status.OperationState
+		// an operationState older than the patch (same startedAt) is not ours
+		if op.StartedAt != "" && op.StartedAt != prior {
+			switch op.Phase {
+			case "Succeeded":
+				goto done
+			case "Failed", "Error":
+				return "", fmt.Errorf("sync app %s: operation %s: %s", name, op.Phase, op.Message)
+			}
+		}
+		if err := sleepCtx(ctx, pollInterval); err != nil {
+			return "", fmt.Errorf("sync app %s: operation not finished within %s (%w)", name, timeout, err)
+		}
+	}
+done:
+	if err := WaitApp(ctx, r, name, timeout); err != nil {
+		return "", err
+	}
+	cur, err := getApp(ctx, r, name)
+	if err != nil {
+		return "", fmt.Errorf("sync app: %w", err)
+	}
+	if cur.Status.Sync.Revision == "" {
+		return "", fmt.Errorf("sync app %s: status.sync.revision is empty after the sync", name)
+	}
+	return cur.Status.Sync.Revision, nil
 }
