@@ -69,7 +69,7 @@ func dig(m any, keys ...string) any {
 func enabledApps(t *testing.T, vals map[string]any) []string {
 	var on []string
 	for _, a := range testWS(t).EnvApps {
-		if dig(vals, a.Key, "enabled") != false {
+		if dig(vals, a.Key, "enabled") == true { // explicit true: the chart map may default an app off
 			on = append(on, a.Key)
 		}
 	}
@@ -83,6 +83,11 @@ func TestRenderEnvApp_Phase1EnablesOnlyDatastoresAndSeed(t *testing.T) {
 	got := strings.Join(enabledApps(t, a.Spec.Source.Helm.ValuesObject), ",")
 	if got != "mongo,mysql,redis,app-config" {
 		t.Fatalf("phase 1 enabled = %s", got)
+	}
+	for _, k := range []string{"shop-api", "shop-gateway", "shop-web"} {
+		if dig(a.Spec.Source.Helm.ValuesObject, k, "enabled") != false {
+			t.Errorf("phase 1 %s enabled = %v, want false", k, dig(a.Spec.Source.Helm.ValuesObject, k, "enabled"))
+		}
 	}
 	if tag := dig(a.Spec.Source.Helm.ValuesObject, "app-config", "values", "seed", "tag"); tag != "sha-seed001" {
 		t.Fatalf("seed.tag = %v", tag)
@@ -245,7 +250,7 @@ func TestRenderEnvApp_SkipAndKeep(t *testing.T) {
 		t.Errorf("shop-api lost its tag: %v", vals["shop-api"])
 	}
 	vals = render2(nil, map[string]string{"shop-gateway": "sha-old"})
-	if dig(vals, "shop-gateway", "enabled") == false || dig(vals, "shop-gateway", "values", "image", "tag") != "sha-old" {
+	if dig(vals, "shop-gateway", "enabled") != true || dig(vals, "shop-gateway", "values", "image", "tag") != "sha-old" {
 		t.Errorf("kept shop-gateway = %v, want enabled at sha-old", vals["shop-gateway"])
 	}
 	if _, err := RenderEnvApp(w, "base", "zenify.test", "main", images, 2, nil, nil); err == nil {
@@ -304,7 +309,7 @@ func TestForProfile_FiltersAppsAndRender(t *testing.T) {
 		t.Errorf("core shop-gateway = %v, want disabled without values", cv["shop-gateway"])
 	}
 	fv := vals(full)
-	if dig(fv, "shop-gateway", "enabled") == false || dig(fv, "shop-gateway", "values", "image", "tag") != "sha-gw00001" {
+	if dig(fv, "shop-gateway", "enabled") != true || dig(fv, "shop-gateway", "values", "image", "tag") != "sha-gw00001" {
 		t.Errorf("full shop-gateway = %v, want enabled at sha-gw00001", fv["shop-gateway"])
 	}
 	for _, n := range ChildApps(core, "base", 2, nil) {

@@ -158,7 +158,9 @@ func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[stri
 // over envs/local/map.yaml). images maps a build repo to its image tag. Phase 1
 // enables only the phase-1 apps (datastores and the seed); phase 2 all except
 // the app keys in skip, which are disabled like a later phase's; kept maps an
-// // app key to the tag it keeps running instead of images[repo].
+// // app key to the tag it keeps running instead of images[repo]. An app of the
+// active profile rendered for this phase gets enabled: true explicitly (the
+// chart map may default it off); every other app is enabled: false.
 func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]string, phase int, skip map[string]bool, kept map[string]string) ([]byte, error) {
 	if phase != 1 && phase != 2 {
 		return nil, fmt.Errorf("env app: phase %d, want 1 or 2", phase)
@@ -181,6 +183,7 @@ func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]
 		if a.Phase > phase || skip[a.Key] {
 			entry["enabled"] = false
 		} else {
+			entry["enabled"] = true
 			v, err := appValues(w, a, slug, domain, images, kept)
 			if err != nil {
 				return nil, fmt.Errorf("env app: %w", err)
