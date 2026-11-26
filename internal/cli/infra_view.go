@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -77,6 +78,38 @@ func newStepView(out io.Writer, title, resume string, steps []string, verbose bo
 	v.flow.Blank()
 	v.logf("plan: %s", strings.Join(steps, ", "))
 	return v
+}
+
+// addSteps inserts the steps in names that the plan lacks just before step
+// before, and prints them as pending (later labels carry the new total).
+func (v *stepView) addSteps(before string, names []string) {
+	var add []string
+	for _, n := range names {
+		if !slices.Contains(v.steps, n) {
+			add = append(add, n)
+		}
+	}
+	if len(add) == 0 {
+		return
+	}
+	at := slices.Index(v.steps, before)
+	v.printMu.Lock()
+	v.steps = slices.Insert(v.steps, at, add...)
+	for _, n := range add {
+		v.flow.Line(ui.StatusInfo, v.label(slices.Index(v.steps, n)), "pending")
+	}
+	v.printMu.Unlock()
+	v.logf("plan: + %s", strings.Join(add, ", "))
+}
+
+// printLines writes plain lines under the flow and into the run log.
+func (v *stepView) printLines(lines []string) {
+	v.print(func() {
+		for _, l := range lines {
+			v.flow.Note(l)
+			v.logf("%s", l)
+		}
+	})
 }
 
 func (v *stepView) label(i int) string {

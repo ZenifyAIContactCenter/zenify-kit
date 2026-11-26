@@ -8,9 +8,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/infra"
@@ -95,10 +98,10 @@ func fakeInfra(t *testing.T, alreadyThere bool) (infraDeps, *[]string, *infraRun
 			rec("buildctl")
 			return "/bin/buildctl", nil
 		},
-		coreTargets: func(w infra.Workspace, _, _, _ string) ([]infra.BuildTarget, error) {
+		scanTargets: func(_ context.Context, _ infra.Runner, w infra.Workspace, _, _, _ string, _ map[string]string) ([]infra.BuildTarget, error) {
 			var ts []infra.BuildTarget
-			for _, repo := range w.Repos() {
-				ts = append(ts, infra.BuildTarget{Repo: repo})
+			for _, b := range w.Builds {
+				ts = append(ts, infra.BuildTarget{Repo: b.Repo, Image: b.Image})
 			}
 			return ts, nil
 		},
@@ -179,19 +182,105 @@ func TestInfraUp_PreflightProblemsStopBeforeAnyChange(t *testing.T) {
 	}
 }
 
-// A build failure names the step and never records state: a later run must
-// not believe the devbox is complete.
-func TestInfraUp_BuildFailureNamesStepAndSkipsState(t *testing.T) {
+// failBuilds makes the builds of the listed repos fail with a multi-line
+// error whose last line is the cause.
+func failBuilds(d *infraDeps, repos ...string) {
+	ok := d.build
+	d.build = func(ctx context.Context, br infra.BuildRunner, ws string, t infra.BuildTarget, refs map[string]string) (infra.BuildResult, error) {
+		if slices.Contains(repos, t.Repo) {
+			return infra.BuildResult{}, errors.New("build " + t.Repo + ": buildctl failed\nstep 4/9\nnpm ERR! 401 unauthorized")
+		}
+		res, err := ok(ctx, br, ws, t, refs)
+		res.Built = true
+		return res, err
+	}
+}
+
+// A failed image does not stop up (FR-13.3): the next image is still built,
+// the table says FAIL with the cause, the app that needs it is left out of
+// phase 2 (FR-13.4), the rest deploys and state is saved, and the exit is
+// non-zero naming the app and the image (FR-13.6, SC-29).
+func TestInfraUp_FailedImageContinuesAndSkipsItsApp(t *testing.T) {
 	d, steps, _ := fakeInfra(t, false)
-	d.build = func(context.Context, infra.BuildRunner, string, infra.BuildTarget, map[string]string) (infra.BuildResult, error) {
-		return infra.BuildResult{}, errors.New("buildctl: exit status 1")
+	failBuilds(&d, "shop-gateway") // the middle one of shop-api, shop-gateway, shop-web
+	var phase2 []byte
+	d.apply = func(_ context.Context, _ infra.Runner, m []byte) (bool, error) {
+		if bytes.Contains(m, []byte("tag: sha-shop-api")) {
+			phase2 = m
+		}
+		*steps = append(*steps, "apply")
+		return true, nil
+	}
+	out, _, err := runInfra(d, "up", "--local")
+	if exitcode.Code(err) == 0 || err == nil {
+		t.Fatal("want a non-zero exit")
+	}
+	for _, want := range []string{"shop-gateway", "image(s) failed", "app(s) skipped"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+	if indexOf(*steps, "build shop-web") < 0 {
+		t.Errorf("the image after the failed one was not built: %v", *steps)
+	}
+	if indexOf(*steps, "save-state") < 0 {
+		t.Errorf("state was not saved: %v", *steps)
+	}
+	for _, want := range []string{"✗", "npm ERR! 401 unauthorized", "shop-gateway  FAIL", "shop-web      OK",
+		"skipped shop-gateway: image shop-gateway failed", "built, no deploy config: team/base-ui"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "step 4/9") {
+		t.Errorf("the screen shows more than the last error line:\n%s", out)
+	}
+	if phase2 == nil {
+		t.Fatal("phase 2 was not applied")
+	}
+	var app struct {
+		Spec struct {
+			Source struct {
+				Helm struct {
+					Values map[string]any `yaml:"valuesObject"`
+				} `yaml:"helm"`
+			} `yaml:"source"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(phase2, &app); err != nil {
+		t.Fatal(err)
+	}
+	vals := map[string]map[string]any{}
+	for k, v := range app.Spec.Source.Helm.Values {
+		if m, ok := v.(map[string]any); ok {
+			vals[k] = m
+		}
+	}
+	if vals["shop-gateway"]["enabled"] != false || vals["shop-gateway"]["values"] != nil {
+		t.Errorf("shop-gateway must be disabled without values: %v", vals["shop-gateway"])
+	}
+	if vals["shop-api"]["enabled"] == false || vals["shop-web"]["enabled"] == false {
+		t.Errorf("apps with an image must stay enabled: api %v, web %v", vals["shop-api"], vals["shop-web"])
+	}
+	if indexOf(*steps, "wait shop-gateway-base-local") >= 0 || indexOf(*steps, "wait shop-web-base-local") < 0 {
+		t.Errorf("waits must skip the left-out app only: %v", *steps)
+	}
+}
+
+// Without the seed image there is no data: stop before phase 1, exit non-zero.
+func TestInfraUp_SeedImageFailureStopsBeforePhase1(t *testing.T) {
+	d, steps, _ := fakeInfra(t, false)
+	failBuilds(&d, "demo-seed")
+	d.apply = func(context.Context, infra.Runner, []byte) (bool, error) {
+		t.Error("apply ran although the seed image failed")
+		return false, nil
 	}
 	_, _, err := runInfra(d, "up", "--local")
-	if exitcode.Code(err) == 0 || !strings.HasPrefix(err.Error(), "build team/base-ui: ") {
-		t.Fatalf("err = %v, want a build step error", err)
+	if exitcode.Code(err) == 0 || err == nil || !strings.Contains(err.Error(), "seed") {
+		t.Fatalf("err = %v, want a seed failure", err)
 	}
-	if indexOf(*steps, "save-state") >= 0 || indexOf(*steps, "apply phase 1") >= 0 {
-		t.Errorf("ran past the failed build: %v", *steps)
+	if indexOf(*steps, "save-state") >= 0 {
+		t.Errorf("state saved after a seed failure: %v", *steps)
 	}
 }
 

@@ -44,7 +44,7 @@ type renderedApp struct {
 
 func render(t *testing.T, phase int) renderedApp {
 	t.Helper()
-	b, err := RenderEnvApp(testWS(t), "base", "zenify.test", "main", testImages, phase)
+	b, err := RenderEnvApp(testWS(t), "base", "zenify.test", "main", testImages, phase, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,13 +145,13 @@ func TestRenderEnvApp_Phase2AppsNamesAndHosts(t *testing.T) {
 // A missing image tag would deploy an app with no image: refuse to render.
 func TestRenderEnvApp_RejectsMissingTagAndBadInput(t *testing.T) {
 	w := testWS(t)
-	if _, err := RenderEnvApp(w, "base", "zenify.test", "main", map[string]string{"demo-seed": "x"}, 2); err == nil {
+	if _, err := RenderEnvApp(w, "base", "zenify.test", "main", map[string]string{"demo-seed": "x"}, 2, nil); err == nil {
 		t.Fatal("phase 2 without app tags must fail")
 	}
-	if _, err := RenderEnvApp(w, "Bad_Slug", "zenify.test", "main", testImages, 2); err == nil {
+	if _, err := RenderEnvApp(w, "Bad_Slug", "zenify.test", "main", testImages, 2, nil); err == nil {
 		t.Fatal("invalid slug must fail")
 	}
-	if _, err := RenderEnvApp(w, "base", strings.Repeat("a", 64)+".test", "main", testImages, 2); err == nil {
+	if _, err := RenderEnvApp(w, "base", strings.Repeat("a", 64)+".test", "main", testImages, 2, nil); err == nil {
 		t.Fatal("a 64-byte label must fail")
 	}
 }
@@ -210,6 +210,37 @@ func TestApply_ChangedFromKubectlOutput(t *testing.T) {
 		}
 		if !strings.HasPrefix(r.calls[0].line(), "kubectl --kubeconfig "+K3sKubeconfig+" apply") {
 			t.Errorf("apply must target the k3s kubeconfig: %s", r.calls[0].line())
+		}
+	}
+}
+
+// An app whose image failed is disabled in phase 2 with no values (SC-29),
+// and has no child Application to wait for.
+func TestRenderEnvApp_SkipDisablesApp(t *testing.T) {
+	w := testWS(t)
+	images := map[string]string{"demo-seed": "x", "shop-api": "a", "shop-web": "c"} // no shop-gateway
+	skip := map[string]bool{"shop-gateway": true}
+	if got := SkippedApps(w, images); len(got) != 1 || got[0] != "shop-gateway" {
+		t.Fatalf("SkippedApps = %v, want [shop-gateway]", got)
+	}
+	b, err := RenderEnvApp(w, "base", "zenify.test", "main", images, 2, skip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a renderedApp
+	if err := yaml.Unmarshal(b, &a); err != nil {
+		t.Fatal(err)
+	}
+	vals := a.Spec.Source.Helm.ValuesObject
+	if dig(vals, "shop-gateway", "enabled") != false || dig(vals, "shop-gateway", "values") != nil {
+		t.Errorf("shop-gateway = %v, want disabled without values", vals["shop-gateway"])
+	}
+	if dig(vals, "shop-api", "values", "image", "tag") != "a" {
+		t.Errorf("shop-api lost its tag: %v", vals["shop-api"])
+	}
+	for _, n := range ChildApps(w, "base", 2, skip) {
+		if n == ChildAppName("shop-gateway", "base") {
+			t.Error("ChildApps lists a skipped app")
 		}
 	}
 }

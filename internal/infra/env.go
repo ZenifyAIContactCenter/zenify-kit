@@ -21,11 +21,12 @@ func EnvNamespace(slug string) string { return "env-" + slug }
 // ChildAppName is the Application app-of-apps renders for app in env slug.
 func ChildAppName(app, slug string) string { return app + "-" + slug + "-local" }
 
-// ChildApps lists the child Application names of env slug enabled up to phase.
-func ChildApps(w Workspace, slug string, phase int) []string {
+// ChildApps lists the child Application names of env slug enabled up to
+// phase, without the apps keyed in skip.
+func ChildApps(w Workspace, slug string, phase int, skip map[string]bool) []string {
 	var out []string
 	for _, a := range w.EnvApps {
-		if a.Phase <= phase {
+		if a.Phase <= phase && !skip[a.Key] {
 			out = append(out, ChildAppName(a.Key, slug))
 		}
 	}
@@ -38,6 +39,18 @@ func PhaseTwoApps(w Workspace, slug string) []string {
 	for _, a := range w.EnvApps {
 		if a.Phase == 2 {
 			out = append(out, ChildAppName(a.Key, slug))
+		}
+	}
+	return out
+}
+
+// SkippedApps are the phase-2 app keys whose build repo has no tag in images,
+// in envApps order: they are left out of the env rather than deployed broken.
+func SkippedApps(w Workspace, images map[string]string) []string {
+	var out []string
+	for _, a := range w.EnvApps {
+		if a.Phase == 2 && a.Repo != "" && images[a.Repo] == "" {
+			out = append(out, a.Key)
 		}
 	}
 	return out
@@ -110,8 +123,9 @@ func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[stri
 
 // RenderEnvApp renders the root Application env-<slug> (charts/app-of-apps
 // over envs/local/map.yaml). images maps a build repo to its image tag. Phase 1
-// enables only the phase-1 apps (datastores and the seed); phase 2 all.
-func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]string, phase int) ([]byte, error) {
+// enables only the phase-1 apps (datastores and the seed); phase 2 all except
+// the app keys in skip, which are disabled like a later phase's.
+func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]string, phase int, skip map[string]bool) ([]byte, error) {
 	if phase != 1 && phase != 2 {
 		return nil, fmt.Errorf("env app: phase %d, want 1 or 2", phase)
 	}
@@ -130,7 +144,7 @@ func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]
 	}
 	for _, a := range w.EnvApps {
 		entry := map[string]any{"name": a.Key + "-" + slug, "namespace": EnvNamespace(slug)}
-		if a.Phase > phase {
+		if a.Phase > phase || skip[a.Key] {
 			entry["enabled"] = false
 		} else {
 			v, err := appValues(w, a, slug, domain, images)
