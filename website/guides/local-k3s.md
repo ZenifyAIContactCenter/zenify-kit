@@ -10,7 +10,7 @@ title: Devbox k3s cục bộ
 
 - Knowledge store có `<store>/.config/infra.json`: repo helm, danh sách image cần build, các app của env và tài khoản seed. Binary của kit không chứa các giá trị này; schema xem ở [`zenify infra`](/reference/cli/zenify_infra). Thiếu file thì `up`, `status`, `show` dừng và nêu đường dẫn file.
 - `gh auth login` xong: token của `gh` dùng để ArgoCD đọc repo helm và làm `NPM_TOKEN` khi build.
-- Có `curl`, `git`, `gh`, `certutil` (gói `libnss3-tools`), `nft` (gói `nftables`), `resolvectl` (systemd-resolved), tối thiểu 12 GiB RAM cho profile `core` hoặc 16 GiB cho `full` (build web cạnh env `full` làm buildkitd bị OOM trên máy nhỏ hơn) và 30 GiB trống cho `/var/lib/rancher` khi cài lần đầu (chạy lại `up` trên devbox đã cài chỉ cần 10 GiB).
+- Có `curl`, `git`, `gh`, `certutil` (gói `libnss3-tools`), `nft` (gói `nftables`), `resolvectl` (systemd-resolved), tối thiểu máy 12 GB RAM cho profile `core` hoặc máy 16 GB cho `full` (build web cạnh env `full` làm buildkitd bị OOM trên máy nhỏ hơn) và 30 GiB trống cho `/var/lib/rancher` khi cài lần đầu (chạy lại `up` trên devbox đã cài chỉ cần 10 GiB).
 
 Thiếu điều kiện nào, [`zenify infra up --local`](/reference/cli/zenify_infra_up) in hết các vấn đề kèm cách sửa và dừng trước khi đổi gì trên máy.
 

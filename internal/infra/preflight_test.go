@@ -59,9 +59,9 @@ func TestPreflight(t *testing.T) {
 	}{
 		{name: "all ok", mod: func(*fakeProbe) {}},
 		{name: "darwin", mod: func(p *fakeProbe) { p.os = "darwin" }, wantCheck: "os"},
-		{name: "low memory", mod: func(p *fakeProbe) { p.mem = 1000 }, wantCheck: "memory", wantIn: []string{"12884901888", "1000", "profile core"}},
+		{name: "low memory", mod: func(p *fakeProbe) { p.mem = 1000 }, wantCheck: "memory", wantIn: []string{"profile core needs a 12 GB host (MemTotal >= 11 GiB)", "have 0.0 GiB"}},
 		// 8 GiB VM failed the web build with core only; 12 GiB is enough for core but not for full
-		{name: "8 GiB fails core", mod: func(p *fakeProbe) { p.mem = 8 << 30 }, wantCheck: "memory", wantIn: []string{"12884901888"}},
+		{name: "8 GB host fails core", mod: func(p *fakeProbe) { p.mem = 8_000_000_000 }, wantCheck: "memory", wantIn: []string{"12 GB host"}},
 		{name: "memory probe error", mod: func(p *fakeProbe) { p.memErr = errors.New("boom") }, wantCheck: "memory", wantIn: []string{"boom"}},
 		{name: "k3s wrong version", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer = true, "v1.30.0+k3s1" }, wantCheck: "k3s", wantIn: []string{"v1.30.0+k3s1", testPin}},
 		{name: "servicelb enabled", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer = true, testPin }, wantCheck: "k3s", wantIn: []string{"--disable=servicelb"}},
@@ -162,27 +162,28 @@ func TestConfigDisablesServicelb_Errors(t *testing.T) {
 	}
 }
 
-// Evidence: a web build OOM-killed buildkitd on a 12 GiB host next to the full
-// env, so full needs 16 GiB while core passes on 12.
+// Evidence: a web build OOM-killed buildkitd on a 12 GB host next to the full
+// env, so full needs a 16 GB host while a 12 GB host passes core. The floors
+// match what such hosts report: a 12 GB VM shows MemTotal 12542185472.
 func TestPreflight_MemoryFloorPerProfile(t *testing.T) {
 	p := okProbe()
-	p.mem = 12 << 30
+	p.mem = 12542185472 // a 12 GB host
 	if got := Preflight(p, DefaultRequirements, testPin, ProfileCore); len(got) != 0 {
-		t.Errorf("12 GiB host must pass core: %+v", got)
+		t.Errorf("a 12 GB host must pass core: %+v", got)
 	}
 	got := Preflight(p, DefaultRequirements, testPin, ProfileFull)
-	if len(got) != 1 || got[0].Check != "memory" || !strings.Contains(got[0].Detail, "17179869184") || !strings.Contains(got[0].Detail, "profile full") {
-		t.Fatalf("12 GiB host must fail full naming 16 GiB: %+v", got)
+	if len(got) != 1 || got[0].Check != "memory" || !strings.Contains(got[0].Detail, "profile full needs a 16 GB host (MemTotal >= 15 GiB), have 11.7 GiB") {
+		t.Fatalf("a 12 GB host must fail full: %+v", got)
 	}
 	if !strings.Contains(got[0].Fix, "--profile core") {
 		t.Errorf("full fix = %q, want the core fallback", got[0].Fix)
 	}
-	p.mem = 8 << 30
+	p.mem = 8_000_000_000
 	if got := Preflight(p, DefaultRequirements, testPin, ProfileCore); len(got) != 1 || strings.Contains(got[0].Fix, "--profile core") {
-		t.Errorf("core fix must not suggest core: %+v", got)
+		t.Errorf("an 8 GB host fails core without suggesting core: %+v", got)
 	}
-	p.mem = 16 << 30
+	p.mem = 16658333696 // a 16 GB host
 	if got := Preflight(p, DefaultRequirements, testPin, ProfileFull); len(got) != 0 {
-		t.Errorf("16 GiB host must pass full: %+v", got)
+		t.Errorf("a 16 GB host must pass full: %+v", got)
 	}
 }
