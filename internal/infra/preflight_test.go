@@ -69,9 +69,9 @@ func TestPreflight(t *testing.T) {
 		{
 			name: "no npm token and no gh token",
 			mod: func(p *fakeProbe) {
-				p.env, p.ghToken = map[string]string{"OTHER_SECRET": "s3cr3t-planted"}, errors.New("not logged in")
+				p.env, p.ghToken = map[string]string{"OTHER_VAR": "planted-value"}, errors.New("not logged in")
 			},
-			wantCheck: "build-secrets", wantIn: []string{"NPM_TOKEN"}, wantNotIn: []string{"s3cr3t-planted", "TASKFORCE"},
+			wantCheck: "build-secrets", wantIn: []string{"NPM_TOKEN"}, wantNotIn: []string{"planted-value", "TASKFORCE"},
 		},
 		{name: "missing certutil", mod: func(p *fakeProbe) { p.cmds["certutil"] = false }, wantCheck: "tools", wantIn: []string{"libnss3-tools"}},
 		{name: "gh not logged in", mod: func(p *fakeProbe) { p.ghStatus = errors.New("exit 1: no accounts") }, wantCheck: "tools", wantIn: []string{"gh auth login", "no accounts"}},
