@@ -158,6 +158,7 @@ var (
 	imagePathRe = regexp.MustCompile(`^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$`)
 	imageTagRe  = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
 	secretIDRe  = regexp.MustCompile(`^[a-z0-9_]+$`)
+	argKeyRe    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	dnsLabelRe  = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 )
 
@@ -223,7 +224,7 @@ func (w Workspace) validate() error {
 		need(secretIDRe.MatchString(id), "scan.optionalSecrets "+strconv.Quote(id)+" (^[a-z0-9_]+$)")
 	}
 	for k := range w.Scan.Args {
-		need(k != "", "scan.args (empty key)")
+		need(argKeyRe.MatchString(k), "scan.args "+strconv.Quote(k)+" (^[A-Za-z_][A-Za-z0-9_]*$)")
 	}
 	seeds := 0
 	keys := map[string]bool{}
@@ -283,6 +284,27 @@ func (w Workspace) Accounts() []SeedAccount {
 		a.Tenant = w.Seed.Tenant
 		a.Password = w.Seed.Password
 		out = append(out, a)
+	}
+	return out
+}
+
+// AllApps are the env apps of every profile: the active ones, then those
+// ForProfile took out.
+func (w Workspace) AllApps() []WorkspaceApp {
+	return append(slices.Clone(w.EnvApps), w.outOfProfile...)
+}
+
+// OutOfProfileRepos are the build repos only apps outside the active profile use.
+func (w Workspace) OutOfProfileRepos() map[string]bool {
+	in := map[string]bool{}
+	for _, a := range w.EnvApps {
+		in[a.Repo] = true
+	}
+	out := map[string]bool{}
+	for _, a := range w.outOfProfile {
+		if a.Repo != "" && !in[a.Repo] {
+			out[a.Repo] = true
+		}
 	}
 	return out
 }

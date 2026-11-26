@@ -43,7 +43,8 @@ type Report struct {
 type appList struct {
 	Items []struct {
 		Metadata struct {
-			Name string `json:"name"`
+			Name        string            `json:"name"`
+			Annotations map[string]string `json:"annotations"`
 		} `json:"metadata"`
 		appStatus
 	} `json:"items"`

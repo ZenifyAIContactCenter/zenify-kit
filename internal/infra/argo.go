@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 )
@@ -274,8 +275,17 @@ func getApp(ctx context.Context, r Runner, name string) (appStatus, error) {
 	return a, nil
 }
 
+// refreshAnnotation asks the ArgoCD controller to refresh an Application;
+// the controller removes it once the refresh is done.
+const refreshAnnotation = "argocd.argoproj.io/refresh"
+
+// refreshWait bounds the wait for the controller to finish the refreshes.
+const refreshWait = 2 * time.Minute
+
 // RefreshApps hard-refreshes the Applications of names that exist (ArgoCD
-// otherwise keeps serving a cached helm commit); one that does not exist yet
+// otherwise keeps serving a cached helm commit) with one kubectl call, then
+// waits until the controller has finished them (it removes the annotation), so
+// a status read afterwards is not the cached one. One that does not exist yet
 // is created from the current repo anyway and is left out.
 func RefreshApps(ctx context.Context, r Runner, names []string) error {
 	apps, err := listApps(ctx, r)
@@ -286,16 +296,50 @@ func RefreshApps(ctx context.Context, r Runner, names []string) error {
 	for _, it := range apps.Items {
 		have[it.Metadata.Name] = true
 	}
+	var todo []string
 	for _, n := range names {
-		if !have[n] {
-			continue
-		}
-		report(ctx, "refreshing application %s", n)
-		if _, err := kubectl(ctx, r, nil, "-n", argoNS, "annotate", "application", n, "argocd.argoproj.io/refresh=hard", "--overwrite"); err != nil {
-			return fmt.Errorf("refresh application %s: %w", n, err)
+		if have[n] {
+			todo = append(todo, n)
 		}
 	}
-	return nil
+	if len(todo) == 0 {
+		return nil
+	}
+	report(ctx, "refreshing %d application(s)", len(todo))
+	args := append([]string{"-n", argoNS, "annotate", "application"}, todo...)
+	if _, err := kubectl(ctx, r, nil, append(args, refreshAnnotation+"=hard", "--overwrite")...); err != nil {
+		return fmt.Errorf("refresh applications %s: %w", strings.Join(todo, ", "), err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, refreshWait)
+	defer cancel()
+	for {
+		l, err := listApps(ctx, r)
+		if err != nil {
+			return fmt.Errorf("refresh applications: %w", err)
+		}
+		var pending []string
+		for _, it := range l.Items {
+			if _, ok := it.Metadata.Annotations[refreshAnnotation]; ok && slices.Contains(todo, it.Metadata.Name) {
+				pending = append(pending, it.Metadata.Name)
+			}
+		}
+		if len(pending) == 0 {
+			return nil
+		}
+		if err := sleepCtx(ctx, pollInterval); err != nil {
+			return fmt.Errorf("refresh applications: not finished within %s (%w): %s", refreshWait, err, strings.Join(pending, ", "))
+		}
+	}
+}
+
+// SyncedRevision returns Application name's status.sync.revision and whether
+// it is Synced and Healthy against its current spec.
+func SyncedRevision(ctx context.Context, r Runner, name string) (rev string, synced bool, err error) {
+	a, err := getApp(ctx, r, name)
+	if err != nil {
+		return "", false, fmt.Errorf("read synced revision: %w", err)
+	}
+	return a.Status.Sync.Revision, a.fresh() && a.Status.Sync.Status == "Synced" && a.Status.Health.Status == "Healthy", nil
 }
 
 // SyncApp starts a sync operation on Application name at its target revision

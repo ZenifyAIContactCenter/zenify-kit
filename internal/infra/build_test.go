@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -587,8 +588,8 @@ func TestScanTargets(t *testing.T) {
 		len(a.OptSecrets) != 1 || a.OptSecrets[0] != "npm_token" || a.Tag != "" || a.Target != "" {
 		t.Fatalf("scanned default target = %+v", a)
 	}
-	if !r.ran("git -C " + filepath.Join(ws, "repos", "a") + " fetch origin") {
-		t.Fatal("no fetch before the Dockerfile probe: a stale ref would hide a new Dockerfile")
+	if !r.ran("git -C " + filepath.Join(ws, "repos", "a") + " fetch --no-tags origin main") {
+		t.Fatal("no fetch of just the base branch before the Dockerfile probe: a stale ref would hide a new Dockerfile")
 	}
 }
 
@@ -601,9 +602,81 @@ func TestScanTargetsReturnsGitFailure(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	_, err := ScanTargets(context.Background(), r, testWS(t), ws, "d.test", "base", map[string]string{"a": "origin/main"})
+	w := testWS(t)
+	w.EnvApps = append(w.EnvApps, WorkspaceApp{Key: "a-svc", Phase: 2, Repo: "a", Profiles: []string{ProfileFull}})
+	// an app of any profile uses the repo: its failure stays a hard error
+	_, err := ScanTargets(context.Background(), r, w.ForProfile(ProfileCore), ws, "d.test", "base", map[string]string{"a": "origin/main"})
 	if err == nil || !strings.Contains(err.Error(), "a") || !strings.Contains(err.Error(), "not a git repository") {
 		t.Fatalf("git failure swallowed or unnamed: %v", err)
+	}
+}
+
+// A repo nothing deploys must not stop up: its failure is a warning and it is skipped.
+func TestScanTargetsUnusedRepoFailureIsWarning(t *testing.T) {
+	ws := fakeWorkspace(t)
+	gitRepo(t, ws, "a")
+	gitRepo(t, ws, "b")
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		switch {
+		case strings.Contains(c.line(), "repos/a fetch"):
+			return nil, errors.New("fatal: unable to access 'https://user:s3cret@github.com/x/a.git/': timeout")
+		case c.args[2] == "ls-tree" && strings.HasSuffix(c.args[1], "repos/b"):
+			return []byte("Dockerfile\n"), nil
+		}
+		return nil, nil
+	}}
+	p := &recProgress{}
+	got, err := ScanTargets(WithProgress(context.Background(), p), r, testWS(t), ws, "d.test", "base", map[string]string{"a": "origin/main", "b": "origin/main"})
+	if err != nil {
+		t.Fatalf("unused repo failure must not be an error: %v", err)
+	}
+	if last := got[len(got)-1]; last.Repo != "b" || len(got) != len(testWS(t).Builds)+1 {
+		t.Errorf("targets = %+v, want builds[] then b only", got)
+	}
+	warn := strings.Join(p.subs, "\n")
+	if !strings.Contains(warn, "scan: skipping a:") || strings.Contains(warn, "s3cret") || !strings.Contains(warn, "https://***@github.com") {
+		t.Errorf("warning = %q, want a skip line without the URL credentials", warn)
+	}
+}
+
+type ctxRunner struct {
+	fakeRunner
+	deadlines int
+	envs      [][]string
+}
+
+func (c *ctxRunner) Run(ctx context.Context, stdin io.Reader, name string, args ...string) ([]byte, error) {
+	if _, ok := ctx.Deadline(); ok {
+		c.deadlines++
+	}
+	return c.fakeRunner.Run(ctx, stdin, name, args...)
+}
+
+func (c *ctxRunner) RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
+	c.envs = append(c.envs, env)
+	return c.Run(ctx, nil, name, args...)
+}
+
+// Every git call of the scan has a deadline and cannot prompt for credentials;
+// a ref that is not origin/<branch> falls back to a plain fetch.
+func TestScanTargetsGitCallsBoundedAndNonInteractive(t *testing.T) {
+	ws := fakeWorkspace(t)
+	gitRepo(t, ws, "a")
+	gitRepo(t, ws, "b")
+	r := &ctxRunner{}
+	if _, err := ScanTargets(context.Background(), r, testWS(t), ws, "d.test", "base", map[string]string{"a": "origin/main", "b": "v1.2.3"}); err != nil {
+		t.Fatal(err)
+	}
+	if r.deadlines != len(r.calls) || len(r.calls) == 0 {
+		t.Errorf("%d of %d git calls had a deadline", r.deadlines, len(r.calls))
+	}
+	for _, e := range r.envs {
+		if len(e) != 1 || e[0] != "GIT_TERMINAL_PROMPT=0" {
+			t.Errorf("git env = %v", e)
+		}
+	}
+	if !r.ran("git -C "+filepath.Join(ws, "repos", "b")+" fetch --no-tags origin") || r.ran("git -C "+filepath.Join(ws, "repos", "b")+" fetch --no-tags origin v1.2.3") {
+		t.Errorf("non-origin ref must fetch origin without a branch: %v", r.calls)
 	}
 }
 
@@ -670,5 +743,33 @@ func TestBuildOptionalNpmTokenFallsBackToGh(t *testing.T) {
 	}
 	if len(p.subs) == 0 || !strings.Contains(strings.Join(p.subs, "\n"), "gh auth token failed") {
 		t.Errorf("no warning reported: %v", p.subs)
+	}
+}
+
+// One `gh auth token` per up, not one per image.
+func TestBuildGhTokenResolvedOncePerRun(t *testing.T) {
+	buildEnv(t, http.StatusNotFound)
+	t.Setenv("NPM_TOKEN", "")
+	ws := t.TempDir()
+	r := &fakeBuildRunner{fakeRunner: fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "gh" {
+			return []byte("gh-token-1\n"), nil
+		}
+		return nil, nil
+	}}}
+	ctx := WithGhTokenCache(context.Background())
+	for i := 0; i < 3; i++ {
+		if _, err := Build(ctx, r, ws, beTarget(t), "sha-abcdef1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := 0
+	for _, c := range r.calls {
+		if c.name == "gh" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("gh auth token ran %d times for 3 builds, want 1", n)
 	}
 }

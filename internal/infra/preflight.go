@@ -92,7 +92,7 @@ func Preflight(h HostProbe, r Requirements, wantK3s, profile string) []Problem {
 	} else if need := r.MinMemBytes[profile]; mem < need {
 		add("memory", fmt.Sprintf("profile %s needs %d bytes RAM (%d GiB; core needs %d, full needs %d), have %d",
 			profile, need, need>>30, r.MinMemBytes[ProfileCore], r.MinMemBytes[ProfileFull], mem),
-			"use a host with more memory, or run up --profile core")
+			memFix(profile))
 	}
 
 	ver, installed, k3sErr := h.InstalledK3sVersion()
@@ -280,4 +280,12 @@ func withStderr(err error) error {
 		}
 	}
 	return err
+}
+
+// memFix is the fix for too little RAM; a full-profile run can also drop to core.
+func memFix(profile string) string {
+	if profile == ProfileFull {
+		return "use a host with more memory, or run up --profile core"
+	}
+	return "use a host with more memory"
 }

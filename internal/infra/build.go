@@ -6,14 +6,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
@@ -90,12 +93,48 @@ func CoreTargets(w Workspace, ws, domain, slug string) ([]BuildTarget, error) {
 	return ts, nil
 }
 
+// gitTimeout bounds each git call of the scan: a remote that hangs must not
+// stall the whole run.
+const gitTimeout = 60 * time.Second
+
+// userinfoRe matches the credentials of a URL in git's error text.
+var userinfoRe = regexp.MustCompile(`(https?://)[^/@\s]+@`)
+
+// redactURLs hides URL userinfo (https://user:pass@host) in err's text.
+func redactURLs(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(userinfoRe.ReplaceAllString(err.Error(), "${1}***@"))
+}
+
+// scanGit runs the scan's git calls: each under gitTimeout, with prompting
+// off (GIT_TERMINAL_PROMPT=0) when r can pass an env, errors without URL credentials.
+type scanGit struct{ r Runner }
+
+func (g scanGit) Run(ctx context.Context, stdin io.Reader, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
+	defer cancel()
+	var out []byte
+	var err error
+	if be, ok := g.r.(interface {
+		RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
+	}); ok && stdin == nil {
+		out, err = be.RunEnv(ctx, []string{"GIT_TERMINAL_PROMPT=0"}, name, args...)
+	} else {
+		out, err = g.r.Run(ctx, stdin, name, args...)
+	}
+	return out, redactURLs(err)
+}
+
 // ScanTargets returns CoreTargets, then one default target per directory of
 // <ws>/repos that is a git repo, is neither in builds[] nor in scan.exclude and
 // holds a Dockerfile at its base ref (refs[repo] overrides the baseRef of
 // .claude/worktree.json; with neither, origin's default branch), sorted by
-// name. The probe reads the ref after a fetch, never the working tree. A
-// directory whose name is not a valid repo name is skipped with a warning.
+// name. The probe reads the ref after a fetch of just that branch, never the
+// working tree. A directory whose name is not a valid repo name, or a repo no
+// env app uses whose fetch or probe fails, is skipped with a warning; for a
+// repo an env app (of any profile) uses the failure is an error.
 func ScanTargets(ctx context.Context, r Runner, w Workspace, ws, domain, slug string, refs map[string]string) ([]BuildTarget, error) {
 	ts, err := CoreTargets(w, ws, domain, slug)
 	if err != nil {
@@ -108,10 +147,15 @@ func ScanTargets(ctx context.Context, r Runner, w Workspace, ws, domain, slug st
 	for _, n := range w.Scan.Exclude {
 		skip[n] = true
 	}
+	used := map[string]bool{}
+	for _, a := range w.AllApps() {
+		used[a.Repo] = true
+	}
 	entries, err := os.ReadDir(filepath.Join(ws, "repos"))
 	if err != nil {
 		return nil, fmt.Errorf("scan repos: %w", err)
 	}
+	g := scanGit{r}
 	for _, e := range entries { // ReadDir sorts by name
 		name := e.Name()
 		if !e.IsDir() || skip[name] {
@@ -127,9 +171,13 @@ func ScanTargets(ctx context.Context, r Runner, w Workspace, ws, domain, slug st
 		} else if err != nil {
 			return nil, fmt.Errorf("scan %s: %w", name, err)
 		}
-		has, err := hasDockerfileAtBase(ctx, r, root, name, refs[name])
+		has, err := hasDockerfileAtBase(ctx, g, root, name, refs[name])
 		if err != nil {
-			return nil, err
+			if used[name] {
+				return nil, err
+			}
+			report(ctx, "scan: skipping %s: %v", name, err)
+			continue
 		}
 		if !has {
 			continue
@@ -144,9 +192,9 @@ func ScanTargets(ctx context.Context, r Runner, w Workspace, ws, domain, slug st
 	return ts, nil
 }
 
-// hasDockerfileAtBase fetches the repo and reports whether <ref>:Dockerfile
-// exists, by `git ls-tree` (exit 0 with empty output = absent, so no locale
-// dependence). Any git failure (bad ref, broken repo, fetch) is returned.
+// hasDockerfileAtBase fetches the repo's base branch and reports whether
+// <ref>:Dockerfile exists, by `git ls-tree` (exit 0 with empty output = absent,
+// so no locale dependence). Any git failure (bad ref, broken repo, fetch) is returned.
 func hasDockerfileAtBase(ctx context.Context, r Runner, root, repo, ref string) (bool, error) {
 	if ref == "" {
 		cfg, err := wt.Load(root)
@@ -161,14 +209,19 @@ func hasDockerfileAtBase(ctx context.Context, r Runner, root, repo, ref string) 
 	if strings.HasPrefix(ref, "-") {
 		return false, fmt.Errorf("scan %s: ref %q must not start with '-'", repo, ref)
 	}
-	if _, err := r.Run(ctx, nil, "git", "-C", root, "fetch", "origin"); err != nil {
-		return false, fmt.Errorf("scan %s: fetch: %w", repo, err)
-	}
 	if ref == "" {
 		var err error
 		if ref, err = remoteDefaultBranch(ctx, r, root); err != nil {
 			return false, fmt.Errorf("scan %s: no .claude/worktree.json baseRef and %w", repo, err)
 		}
+	}
+	// fetch only the base branch, not every branch and tag of the remote
+	fetch := []string{"-C", root, "fetch", "--no-tags", "origin"}
+	if br, ok := strings.CutPrefix(ref, "origin/"); ok && br != "" {
+		fetch = append(fetch, br)
+	}
+	if _, err := r.Run(ctx, nil, "git", fetch...); err != nil {
+		return false, fmt.Errorf("scan %s: fetch: %w", repo, err)
 	}
 	out, err := r.Run(ctx, nil, "git", "-C", root, "ls-tree", "--name-only", ref, "--", "Dockerfile")
 	if err != nil {
@@ -374,6 +427,33 @@ func tagExists(ctx context.Context, image, tag string) (bool, error) {
 	return false, fmt.Errorf("registry %s: unexpected status %s", u, resp.Status)
 }
 
+type ghCacheKey struct{}
+
+type ghCache struct {
+	once sync.Once
+	tok  string
+	err  error
+}
+
+// WithGhTokenCache makes the builds under ctx run `gh auth token` at most once.
+func WithGhTokenCache(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ghCacheKey{}, &ghCache{})
+}
+
+// ghToken is `gh auth token`, cached per WithGhTokenCache, run only when asked.
+func ghToken(ctx context.Context, r Runner) (string, error) {
+	run := func() (string, error) {
+		out, err := r.Run(ctx, nil, "gh", "auth", "token")
+		return strings.TrimSpace(string(out)), err
+	}
+	c, ok := ctx.Value(ghCacheKey{}).(*ghCache)
+	if !ok {
+		return run()
+	}
+	c.once.Do(func() { c.tok, c.err = run() })
+	return c.tok, c.err
+}
+
 // secretEnv resolves each secret id to KEY=value for buildctl's env: the
 // process env first, then the kit env store; npm_token falls back to
 // `gh auth token`, for an optional one too. A missing required secret is an error
@@ -407,12 +487,12 @@ func secretEnv(ctx context.Context, r Runner, ws string, ids, optional []string)
 			return nil, nil, nil, err
 		}
 		if v == "" && id == "npm_token" {
-			out, err := r.Run(ctx, nil, "gh", "auth", "token")
+			tok, err := ghToken(ctx, r)
 			if err != nil {
 				// optional: leave it out, but say why the build may lack the token
 				report(ctx, "warning: %s unset and gh auth token failed (%v); building without it", key, err)
 			} else {
-				v = strings.TrimSpace(string(out))
+				v = tok
 			}
 		}
 		if v != "" {
@@ -426,11 +506,11 @@ func secretEnv(ctx context.Context, r Runner, ws string, ids, optional []string)
 			return nil, nil, values, err
 		}
 		if v == "" && id == "npm_token" {
-			out, err := r.Run(ctx, nil, "gh", "auth", "token")
+			tok, err := ghToken(ctx, r)
 			if err != nil {
 				return nil, nil, values, fmt.Errorf("NPM_TOKEN unset and gh auth token failed: %w", err)
 			}
-			v = strings.TrimSpace(string(out))
+			v = tok
 		}
 		if v == "" {
 			return nil, nil, values, fmt.Errorf("%s is not set (env or %s)", key, store)

@@ -282,11 +282,12 @@ func TestRefreshApps_AnnotatesExistingOnly(t *testing.T) {
 			if !strings.Contains(c.line(), "argocd.argoproj.io/refresh=hard") || !strings.Contains(c.line(), "--kubeconfig "+K3sKubeconfig) {
 				t.Errorf("annotate call = %s", c.line())
 			}
-			got = append(got, c.args[len(c.args)-3])
+			got = append(got, c.line())
 		}
 	}
-	if strings.Join(got, ",") != "env-base,shop-api-base-local" {
-		t.Errorf("annotated %v, want env-base and shop-api-base-local only", got)
+	// one call for all existing apps, none for the app that does not exist yet
+	if len(got) != 1 || !strings.Contains(got[0], "annotate application env-base shop-api-base-local argocd.argoproj.io/refresh=hard --overwrite") || strings.Contains(got[0], "shop-web") {
+		t.Errorf("annotate calls = %v, want one for env-base and shop-api-base-local", got)
 	}
 	r.respond = func(c call) ([]byte, error) {
 		if strings.Contains(c.line(), " annotate ") {
@@ -357,5 +358,49 @@ func TestSyncApp_WaitsForItsOwnOperation(t *testing.T) {
 	}}
 	if _, err := SyncApp(context.Background(), r, "app-config-base-local", time.Second); err == nil || !strings.Contains(err.Error(), "hook job failed") {
 		t.Errorf("a failed operation must surface its message: %v", err)
+	}
+}
+
+// The refresh is asynchronous: the status read right after it must be the
+// refreshed one, so the wait ends only when the controller removed the annotation.
+func TestRefreshApps_WaitsForControllerToFinish(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	annotated, lists := false, 0
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		switch {
+		case strings.Contains(c.line(), " annotate "):
+			annotated = true
+		case strings.Contains(c.line(), "get applications"):
+			if annotated {
+				if lists++; lists < 3 {
+					return []byte(`{"items":[{"metadata":{"name":"env-base","annotations":{"argocd.argoproj.io/refresh":"hard"}}}]}`), nil
+				}
+			}
+			return []byte(`{"items":[{"metadata":{"name":"env-base"}}]}`), nil
+		}
+		return nil, nil
+	}}
+	if err := RefreshApps(context.Background(), r, []string{"env-base"}); err != nil {
+		t.Fatal(err)
+	}
+	if lists < 3 {
+		t.Errorf("returned after %d post-annotate lists, while the refresh annotation was still set", lists)
+	}
+}
+
+func TestSyncedRevision(t *testing.T) {
+	r := &fakeRunner{respond: func(call) ([]byte, error) {
+		return []byte(`{"status":{"sync":{"status":"Synced","revision":"abc"},"health":{"status":"Healthy"}}}`), nil
+	}}
+	if rev, ok, err := SyncedRevision(context.Background(), r, "s"); err != nil || !ok || rev != "abc" {
+		t.Errorf("rev=%q ok=%v err=%v", rev, ok, err)
+	}
+	r.respond = func(call) ([]byte, error) {
+		return []byte(`{"status":{"sync":{"status":"OutOfSync","revision":"abc"},"health":{"status":"Healthy"}}}`), nil
+	}
+	if _, ok, _ := SyncedRevision(context.Background(), r, "s"); ok {
+		t.Error("OutOfSync app reported as synced")
 	}
 }

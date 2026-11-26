@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -52,6 +53,7 @@ type infraDeps struct {
 	apply          func(ctx context.Context, r infra.Runner, manifest []byte) (bool, error)
 	appExists      func(ctx context.Context, r infra.Runner, name string) (bool, error)
 	refreshApps    func(ctx context.Context, r infra.Runner, names []string) error
+	syncedRevision func(ctx context.Context, r infra.Runner, name string) (string, bool, error)
 	syncApp        func(ctx context.Context, r infra.Runner, name string, timeout time.Duration) (string, error)
 	deployedTags   func(ctx context.Context, r infra.Runner, w infra.Workspace, slug string) (map[string]string, error)
 	applyEnvCA     func(ctx context.Context, r infra.Runner, slug string, pem []byte) error
@@ -108,6 +110,7 @@ func defaultInfraDeps() infraDeps {
 		apply:           infra.Apply,
 		appExists:       infra.AppExists,
 		refreshApps:     infra.RefreshApps,
+		syncedRevision:  infra.SyncedRevision,
 		syncApp:         infra.SyncApp,
 		saveState:       infra.SaveState,
 		status:          infra.Status,
@@ -319,19 +322,17 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, pro
 	if err != nil {
 		return failStep("workspace", err)
 	}
-	valid := w.Repos()
-	for repo := range refs {
-		if !slices.Contains(valid, repo) {
-			return exitcode.New(exitcode.BadArgs, fmt.Errorf("--ref: unknown repo %q (valid: %s)", repo, strings.Join(valid, ", ")))
+	// the preflight RAM floor depends on the profile: flag, else saved state, else core
+	st, err := infra.LoadState(home)
+	if err != nil {
+		return failStep("state", err)
+	}
+	if profile == "" {
+		if profile, err = savedProfile(st); err != nil {
+			return err
 		}
 	}
-	if profile == "" { // the preflight RAM floor depends on it: flag, else saved state, else core
-		st, err := infra.LoadState(home)
-		if err != nil {
-			return failStep("state", err)
-		}
-		profile = st.ActiveProfile()
-	}
+	ctx = infra.WithGhTokenCache(ctx)
 	logFile, logPath, err := openRunLog(home, "up")
 	if err != nil {
 		return failStep("log", err)
@@ -446,7 +447,7 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, pro
 		return err
 	}
 
-	images, failed, failedRepos, err := d.buildImages(ctx, v, w, home, ws, domain, refs)
+	images, failed, failedRepos, err := d.buildImages(ctx, v, w, home, ws, domain, profile, refs)
 	if err != nil {
 		return err
 	}
@@ -478,7 +479,8 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, pro
 		}
 	}
 	v.printLines(skippedLines(w, skipped, keptKeys, kept))
-	if err := d.applyEnv(ctx, v, w, slug, domain, chartRef, images, skip, kept, pem); err != nil {
+	configRev, err := d.applyEnv(ctx, v, w, slug, domain, chartRef, images, skip, kept, pem, st.ConfigRev())
+	if err != nil {
 		return err
 	}
 	if err := v.run(ctx, "state", func(context.Context) (stepOutcome, error) {
@@ -486,7 +488,7 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, pro
 		if tg.state != nil && !tg.state.CreatedAt.IsZero() {
 			created = tg.state.CreatedAt // a rerun keeps when the devbox was first set up
 		}
-		return stepOutcome{detail: "saved"}, d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: created, Profile: profile})
+		return stepOutcome{detail: "saved"}, d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: created, Profile: profile, ConfigRevision: configRev})
 	}); err != nil {
 		return err
 	}
@@ -562,7 +564,7 @@ func buildReason(err error) string {
 // repo → tag of the images that exist (built or tag already there) and the
 // failed image names, after printing the summary table. The seed image
 // failing is an error: without data the env is pointless.
-func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspace, home, ws, domain string, refs map[string]string) (map[string]string, []string, map[string]bool, error) {
+func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspace, home, ws, domain, profile string, refs map[string]string) (map[string]string, []string, map[string]bool, error) {
 	var ts []infra.BuildTarget
 	if err := v.run(ctx, "buildctl", func(ctx context.Context) (stepOutcome, error) {
 		if _, err := d.ensureBuildctl(ctx, d.runner, home); err != nil {
@@ -576,6 +578,16 @@ func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspa
 		return stepOutcome{detail: fmt.Sprintf("ready, %d image(s) to check", len(ts))}, err
 	}); err != nil {
 		return nil, nil, nil, err
+	}
+	// --ref is checked against builds[] and the scanned repos
+	var valid []string
+	for _, t := range ts {
+		valid = append(valid, t.Repo)
+	}
+	for _, repo := range sortedRefRepos(refs) {
+		if !slices.Contains(valid, repo) {
+			return nil, nil, nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("--ref: unknown repo %q (valid: %s)", repo, strings.Join(valid, ", ")))
+		}
 	}
 	names := make([]string, len(ts))
 	for i, t := range ts {
@@ -625,7 +637,7 @@ func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspa
 	if seedImage != "" {
 		return nil, nil, nil, failStep("build "+seedImage, errors.New("the seed image failed to build, nothing was deployed"))
 	}
-	v.printLines(noDeployLines(w, rows, ts))
+	v.printLines(noDeployLines(w, profile, rows, ts))
 	return images, failed, failedRepos, nil
 }
 
@@ -657,8 +669,10 @@ func summaryLines(rows []buildRow) []string {
 }
 
 // noDeployLines names the scanned images (not the declared builds[] ones, which
-// may be bases on purpose) that no envApps entry uses.
-func noDeployLines(w infra.Workspace, rows []buildRow, ts []infra.BuildTarget) []string {
+// may be bases on purpose) that no envApps entry of the active profile uses: an
+// image only an app outside the profile uses is "not in profile", any other is
+// "no deploy config".
+func noDeployLines(w infra.Workspace, profile string, rows []buildRow, ts []infra.BuildTarget) []string {
 	declared := map[string]bool{}
 	for _, b := range w.Builds {
 		declared[b.Repo] = true
@@ -666,19 +680,45 @@ func noDeployLines(w infra.Workspace, rows []buildRow, ts []infra.BuildTarget) [
 	for _, a := range w.EnvApps {
 		declared[a.Repo] = true
 	}
+	other := w.OutOfProfileRepos()
 	var out []string
 	for i, t := range ts {
 		if declared[t.Repo] || i >= len(rows) {
 			continue
 		}
-		switch rows[i].status {
-		case "OK":
+		if rows[i].status != "OK" && rows[i].status != "SKIP" {
+			continue
+		}
+		switch {
+		case other[t.Repo]:
+			out = append(out, "image ready, not in profile "+profile+": "+t.Image)
+		case rows[i].status == "OK":
 			out = append(out, "built, no deploy config: "+t.Image)
-		case "SKIP":
+		default:
 			out = append(out, "image ready, no deploy config: "+t.Image)
 		}
 	}
 	return out
+}
+
+// sortedRefRepos are the repos named by --ref, sorted.
+func sortedRefRepos(refs map[string]string) []string {
+	out := make([]string, 0, len(refs))
+	for r := range refs {
+		out = append(out, r)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// savedProfile is the profile saved in state (core when none); a value that is
+// no profile is a bad argument naming state.json.
+func savedProfile(st *infra.State) (string, error) {
+	p := st.ActiveProfile()
+	if !infra.ValidProfile(p) {
+		return "", exitcode.New(exitcode.BadArgs, fmt.Errorf("state.json: profile %q is not %s or %s; fix or delete ~/.zenify/infra/state.json, or pass --profile", p, infra.ProfileCore, infra.ProfileFull))
+	}
+	return p, nil
 }
 
 // skippedLines is one line per app that is left out (`skipped`) or keeps its
@@ -701,14 +741,15 @@ func skippedLines(w infra.Workspace, skipped, keptKeys []string, tags map[string
 // applyEnv publishes the local CA into env slug's namespace, then brings the
 // env up in two phases: datastores + seed, then the apps. An env where any
 // phase-2 app already exists skips phase 1: re-applying it would prune them.
-func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace, slug, domain, chartRef string, images map[string]string, skip map[string]bool, kept map[string]string, caPEM []byte) error {
+func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace, slug, domain, chartRef string, images map[string]string, skip map[string]bool, kept map[string]string, caPEM []byte, prevRev string) (string, error) {
 	r := d.runner
 	root := infra.EnvAppName(slug)
 	if err := v.run(ctx, "env-ca", func(ctx context.Context) (stepOutcome, error) {
 		return stepOutcome{detail: infra.EnvNamespace(slug) + "/" + infra.EnvCAConfigMap + " applied"}, d.applyEnvCA(ctx, r, slug, caPEM)
 	}); err != nil {
-		return err
+		return "", err
 	}
+	configRev := ""
 	for phase := 1; phase <= 2; phase++ {
 		if err := v.run(ctx, fmt.Sprintf("env-phase-%d", phase), func(ctx context.Context) (stepOutcome, error) {
 			if phase == 1 {
@@ -724,16 +765,21 @@ func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace,
 			}
 			// ArgoCD may serve a cached helm commit; refresh before anything reads it
 			refresh := append([]string{root}, infra.ChildApps(w, slug, 2, nil)...)
-			configRev := ""
 			if phase == 2 {
 				if err := d.refreshApps(ctx, r, refresh); err != nil {
 					return stepOutcome{}, err
 				}
 				// auto-sync runs no hooks when nothing in the diff changed: sync the
-				// seed app (its PreSync hook adds new Secret keys) before the apps start
+				// seed app (its PreSync hook adds new Secret keys) before the apps start,
+				// unless it is already Synced/Healthy at the revision the last up synced
 				if seed := infra.SeedAppName(w, slug); seed != "" {
-					var err error
-					if configRev, err = d.syncApp(ctx, r, seed, envTimeout); err != nil {
+					rev, synced, err := d.syncedRevision(ctx, r, seed)
+					if err != nil {
+						return stepOutcome{}, err
+					}
+					if synced && prevRev != "" && rev == prevRev {
+						configRev = rev
+					} else if configRev, err = d.syncApp(ctx, r, seed, envTimeout); err != nil {
 						return stepOutcome{}, err
 					}
 				}
@@ -758,10 +804,10 @@ func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace,
 			}
 			return stepOutcome{detail: changedWord(changed) + ", Synced/Healthy"}, nil
 		}); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return nil
+	return configRev, nil
 }
 
 func (d infraDeps) statusCmd() *cobra.Command {
@@ -790,7 +836,11 @@ func (d infraDeps) statusCmd() *cobra.Command {
 			if err != nil {
 				return failStep("workspace", err)
 			}
-			w = w.ForProfile(tg.state.ActiveProfile())
+			profile, err := savedProfile(tg.state)
+			if err != nil {
+				return err
+			}
+			w = w.ForProfile(profile)
 			rep, err := d.status(ctx, d.runner, w, home, tg.domain)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err) // already prefixed "status:"
@@ -846,7 +896,11 @@ func (d infraDeps) showCmd() *cobra.Command {
 			if err != nil {
 				return failStep("workspace", err)
 			}
-			w = w.ForProfile(tg.state.ActiveProfile())
+			profile, err := savedProfile(tg.state)
+			if err != nil {
+				return err
+			}
+			w = w.ForProfile(profile)
 			rep, err := d.show(ctx, d.runner, w, home, tg.domain, slug)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err) // already prefixed "show:"

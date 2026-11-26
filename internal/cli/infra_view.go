@@ -93,6 +93,9 @@ func (v *stepView) addSteps(before string, names []string) {
 		return
 	}
 	at := slices.Index(v.steps, before)
+	if at < 0 { // anchor missing: the new steps go last, never a panic
+		at = len(v.steps)
+	}
 	v.printMu.Lock()
 	v.steps = slices.Insert(v.steps, at, add...)
 	for _, n := range add {

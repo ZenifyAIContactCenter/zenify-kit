@@ -17,6 +17,9 @@ type State struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	// Profile is the env profile (core or full) the last up deployed; empty = core.
 	Profile string `json:"profile,omitempty"`
+	// ConfigRevision is the helm commit the seed app was last synced at; a rerun
+	// whose seed app still runs it skips the forced sync.
+	ConfigRevision string `json:"configRevision,omitempty"`
 }
 
 func statePath(home string) string { return filepath.Join(infraDir(home), "state.json") }
@@ -73,4 +76,12 @@ func (s *State) ActiveProfile() string {
 		return ProfileCore
 	}
 	return s.Profile
+}
+
+// ConfigRev is the saved config revision, "" when there is no state.
+func (s *State) ConfigRev() string {
+	if s == nil {
+		return ""
+	}
+	return s.ConfigRevision
 }

@@ -174,6 +174,13 @@ func TestPreflight_MemoryFloorPerProfile(t *testing.T) {
 	if len(got) != 1 || got[0].Check != "memory" || !strings.Contains(got[0].Detail, "17179869184") || !strings.Contains(got[0].Detail, "profile full") {
 		t.Fatalf("12 GiB host must fail full naming 16 GiB: %+v", got)
 	}
+	if !strings.Contains(got[0].Fix, "--profile core") {
+		t.Errorf("full fix = %q, want the core fallback", got[0].Fix)
+	}
+	p.mem = 8 << 30
+	if got := Preflight(p, DefaultRequirements, testPin, ProfileCore); len(got) != 1 || strings.Contains(got[0].Fix, "--profile core") {
+		t.Errorf("core fix must not suggest core: %+v", got)
+	}
 	p.mem = 16 << 30
 	if got := Preflight(p, DefaultRequirements, testPin, ProfileFull); len(got) != 0 {
 		t.Errorf("16 GiB host must pass full: %+v", got)

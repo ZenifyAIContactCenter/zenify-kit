@@ -68,7 +68,7 @@ func TestWorkspaceValidateRejectsUnsafeValues(t *testing.T) {
 		}, ""},
 		{"scan exclude repo charset", func(w *Workspace) { w.Scan.Exclude = []string{"Bad/Repo"} }, `scan.exclude "Bad/Repo"`},
 		{"scan secret charset", func(w *Workspace) { w.Scan.OptionalSecrets = []string{"NPM-TOKEN"} }, `scan.optionalSecrets "NPM-TOKEN" (^[a-z0-9_]+$)`},
-		{"scan empty arg key", func(w *Workspace) { w.Scan.Args = map[string]string{"": "v"} }, "scan.args (empty key)"},
+		{"scan empty arg key", func(w *Workspace) { w.Scan.Args = map[string]string{"": "v"} }, `scan.args "" (^[A-Za-z_]`},
 		{"built app in phase 1", func(w *Workspace) { w.EnvApps[4].Phase = 1 }, "envApps[4].phase (an app with repo runs in phase 2)"},
 	}
 	for _, tc := range cases {

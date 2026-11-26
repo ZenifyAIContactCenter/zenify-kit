@@ -113,3 +113,13 @@ func TestInfraUpDown_WriteRunLog(t *testing.T) {
 		}
 	}
 }
+
+// A plan without the anchor step must not panic: the new steps go last.
+func TestStepViewAddSteps_MissingAnchorAppends(t *testing.T) {
+	var out bytes.Buffer
+	v := newStepView(&out, "zenify infra up", "zenify infra up --local", []string{"k3s", "state"}, false, nil, "")
+	v.addSteps("no-such-step", []string{"build x"})
+	if got := strings.Join(v.steps, ","); got != "k3s,state,build x" {
+		t.Errorf("steps = %s", got)
+	}
+}

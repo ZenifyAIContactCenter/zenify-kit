@@ -102,6 +102,7 @@ func fakeInfra(t *testing.T, alreadyThere bool) (infraDeps, *[]string, *infraRun
 			rec("refresh " + strings.Join(names, ","))
 			return nil
 		},
+		syncedRevision: func(context.Context, infra.Runner, string) (string, bool, error) { return "", false, nil },
 		syncApp: func(_ context.Context, _ infra.Runner, name string, _ time.Duration) (string, error) {
 			rec("sync " + name)
 			return "rev-abc123", nil
@@ -550,15 +551,22 @@ func TestInfraStatus_UsesDeployedDomain(t *testing.T) {
 	}
 }
 
-// A typo in --ref would otherwise build every repo from its baseRef silently.
+// A typo in --ref would otherwise build every repo from its baseRef silently;
+// the valid list includes the scanned repos, and a scanned repo is accepted.
 func TestInfraUp_UnknownRefRepoIsBadArgs(t *testing.T) {
 	d, steps, _ := fakeInfra(t, true)
 	_, _, err := runInfra(d, "up", "--local", "--ref", "shop-wbe=origin/x")
-	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "shop-web") {
+	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "shop-web") || !strings.Contains(err.Error(), "scan-tool") {
 		t.Fatalf("err = %v", err)
 	}
-	if len(*steps) != 0 {
-		t.Errorf("steps ran: %v", *steps)
+	for _, s := range *steps {
+		if strings.HasPrefix(s, "build ") || s == "apply phase 1" {
+			t.Errorf("a build or apply ran after a bad --ref: %v", *steps)
+		}
+	}
+	d, _, _ = fakeInfra(t, true)
+	if _, _, err := runInfra(d, "up", "--local", "--ref", "scan-tool=origin/x"); err != nil {
+		t.Fatalf("--ref for a scanned repo must be accepted: %v", err)
 	}
 }
 
@@ -1101,5 +1109,91 @@ func TestBuildReason_Priority(t *testing.T) {
 	got := buildReason(errors.New(long))
 	if !strings.HasSuffix(got, oomHint) || len([]rune(strings.TrimSuffix(got, oomHint))) != 200 {
 		t.Errorf("cap: hint kept, original part 200 runes; got len %d", len([]rune(got)))
+	}
+}
+
+// A profile in state.json that is no profile is a bad argument naming the file.
+func TestInfra_InvalidSavedProfileIsBadArgs(t *testing.T) {
+	for _, cmd := range [][]string{{"up", "--local"}, {"status", "--local"}, {"show", "--local"}} {
+		d, steps, _ := fakeInfra(t, true)
+		home, _ := d.home()
+		if err := infra.SaveState(home, &infra.State{Profile: "huge"}); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := runInfra(d, cmd...)
+		if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "state.json") || !strings.Contains(err.Error(), `"huge"`) {
+			t.Errorf("%v: err = %v", cmd, err)
+		}
+		if cmd[0] == "up" && len(*steps) != 0 {
+			t.Errorf("steps ran: %v", *steps)
+		}
+	}
+}
+
+// The seed sync (and its hook) is forced unless the seed app already runs the
+// revision the last up synced; the revision is saved either way.
+func TestInfraUp_SeedSyncSkippedWhenRevisionUnchanged(t *testing.T) {
+	cases := []struct {
+		name, saved, live string
+		synced        bool
+		wantSync      bool
+		wantSaved     string
+	}{
+		{"same revision, synced: skip", "rev-1", "rev-1", true, false, "rev-1"},
+		{"newer revision: force", "rev-1", "rev-2", true, true, "rev-abc123"},
+		{"same revision but not synced: force", "rev-1", "rev-1", false, true, "rev-abc123"},
+		{"no saved revision: force", "", "rev-1", true, true, "rev-abc123"},
+	}
+	for _, c := range cases {
+		d, steps, _ := fakeInfra(t, true)
+		home, _ := d.home()
+		if err := infra.SaveState(home, &infra.State{Domain: "devbox2.test", ConfigRevision: c.saved}); err != nil {
+			t.Fatal(err)
+		}
+		d.syncedRevision = func(context.Context, infra.Runner, string) (string, bool, error) { return c.live, c.synced, nil }
+		var phase2 []byte
+		d.apply = func(_ context.Context, _ infra.Runner, m []byte) (bool, error) {
+			if bytes.Contains(m, []byte("tag: sha-shop-api")) {
+				phase2 = m
+			}
+			return true, nil
+		}
+		var st *infra.State
+		d.saveState = func(_ string, s *infra.State) error { st = s; return nil }
+		if _, _, err := runInfra(d, "up", "--local"); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := indexOf(*steps, "sync app-config-base-local") >= 0; got != c.wantSync {
+			t.Errorf("%s: forced sync = %v, want %v", c.name, got, c.wantSync)
+		}
+		if st == nil || st.ConfigRevision != c.wantSaved {
+			t.Errorf("%s: saved configRevision = %+v, want %s", c.name, st, c.wantSaved)
+		}
+		wantAnn := c.saved
+		if c.wantSync {
+			wantAnn = "rev-abc123"
+		}
+		if !strings.Contains(string(phase2), "zenify.dev/config-revision: "+wantAnn) {
+			t.Errorf("%s: pods must carry %s:\n%s", c.name, wantAnn, phase2)
+		}
+	}
+}
+
+// Images only an app outside the active profile uses are reported as such,
+// not as having no deploy config.
+func TestNoDeployLines_ProfileAware(t *testing.T) {
+	w := testWorkspace(t)
+	w.EnvApps = append(w.EnvApps, infra.WorkspaceApp{Key: "chat", Phase: 2, Repo: "chat-svc", Profiles: []string{infra.ProfileFull}})
+	core := w.ForProfile(infra.ProfileCore)
+	ts := []infra.BuildTarget{{Repo: "chat-svc", Image: "chat-svc"}, {Repo: "scan-tool", Image: "scan-tool"}, {Repo: "ready-tool", Image: "ready-tool"}}
+	rows := []buildRow{{status: "OK"}, {status: "OK"}, {status: "SKIP"}}
+	got := strings.Join(noDeployLines(core, "core", rows, ts), "\n")
+	for _, want := range []string{"image ready, not in profile core: chat-svc", "built, no deploy config: scan-tool", "image ready, no deploy config: ready-tool"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lines lack %q:\n%s", want, got)
+		}
+	}
+	if full := strings.Join(noDeployLines(w.ForProfile(infra.ProfileFull), "full", rows, ts), "\n"); strings.Contains(full, "chat-svc") {
+		t.Errorf("full profile uses chat-svc, got:\n%s", full)
 	}
 }
