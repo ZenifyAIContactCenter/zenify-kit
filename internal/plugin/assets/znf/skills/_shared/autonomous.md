@@ -65,7 +65,7 @@ zenify await question --summary "<what is unclear>" --questions <abs path to JSO
 zenify await handoff --summary "<what the receiver must do>" --to "<name or @username>"
 ```
 
-`--questions` holds a JSON array of exactly 1 `{text, situation, options[{label,detail,consequence}], recommended, default_if_silent, audience}`: `text` ≤ 300 characters, `situation` non-empty and ≤ 600, 2–4 options (`label` ≤ 24 characters, `detail` and `consequence` ≤ 200, all three fields non-empty), `recommended` (required) and `default_if_silent` are option indexes (`default_if_silent` may be `null`), `audience` is `business` or `technical`.
+`--questions` holds a JSON array of exactly 1 `{text, situation, options[{label,detail,consequence}], recommended, default_if_silent, audience}`: `text` ≤ 300 characters, `situation` non-empty and ≤ 600, 2–4 options (`label` ≤ 24 characters, `detail` and `consequence` ≤ 200, all three fields non-empty), `recommended` (required) and `default_if_silent` are option indexes (`default_if_silent` may be `null`), `audience` is `business`, `technical` or `reporter` (the person who reported the item; the host picks who that is).
 
 Pass every file the person must read as an absolute `--file`. Exit 8 is the expected stop, not a failure: after the command prints its id, end the session at once, with no further step and no retry.
 

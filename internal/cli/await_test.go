@@ -318,6 +318,23 @@ func TestAwaitQuestionAcceptBoundary(t *testing.T) {
 	}
 }
 
+func TestAwaitQuestionReporterAudience(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	qf := filepath.Join(t.TempDir(), "q.json")
+	if err := os.WriteFile(qf, []byte(`[`+awaitQ(`"audience":"reporter"`)+`]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runAwait(t, "await", "question", "--summary", "s", "--questions", qf)
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v), want 8", exitcode.Code(err), err)
+	}
+	r, _ := readRecord(t, home, strings.TrimSpace(out))
+	if r.Questions[0].Audience != "reporter" {
+		t.Fatalf("record = %+v", r)
+	}
+}
+
 func TestAwaitRefusals(t *testing.T) {
 	q := []string{"await", "question", "--summary", "s"}
 	cases := []struct {
@@ -354,7 +371,7 @@ func TestAwaitRefusals(t *testing.T) {
 		{"consequence 201 runes", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "d", strings.Repeat("ế", 201))+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "consequence has 201"}, //znf:allow-lang
 		{"text 301 runes", "1", q, `[` + awaitQ(`"text":"`+strings.Repeat("ế", 301)+`"`) + `]`, "text"},                                                                          //znf:allow-lang
 		{"blank question text", "1", q, `[` + awaitQ(`"text":"  "`) + `]`, "text"},
-		{"bad audience", "1", q, `[` + awaitQ(`"audience":"manager"`) + `]`, "audience"},
+		{"bad audience", "1", q, `[` + awaitQ(`"audience":"manager"`) + `]`, "business, technical or reporter"},
 		{"unknown field", "1", q, `[` + awaitQ(`"foo":1`) + `]`, "foo"},
 		{"old shape: options are strings", "1", q, `[{"text":"q","options":["a","b"],"audience":"business"}]`, "JSON array of one"},
 		{"not json", "1", q, `{`, "JSON array of one"},
