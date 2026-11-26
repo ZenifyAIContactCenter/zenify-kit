@@ -213,7 +213,7 @@ func TestShow_ClusterAccess(t *testing.T) {
 	if strings.Contains(string(b), "planted-admin-secret") || strings.Contains(string(b), `"openbao"`) || strings.Contains(string(b), "ingressUrl") {
 		t.Fatalf("show json = %s", b)
 	}
-	if r.ran("kubectl --kubeconfig "+K3sKubeconfig+" -n argocd get secret") {
+	if r.ran("kubectl --kubeconfig " + K3sKubeconfig + " -n argocd get secret") {
 		t.Fatal("show read the ArgoCD admin secret")
 	}
 

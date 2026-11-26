@@ -48,6 +48,7 @@ func InstallArgo(ctx context.Context, r Runner) (changed bool, err error) {
 		}
 	}
 	if !pinned {
+		report(ctx, "applying ArgoCD %s manifest", ArgoCDVersion)
 		if err := applyArgo(ctx, r); err != nil {
 			return true, err
 		}
@@ -55,6 +56,7 @@ func InstallArgo(ctx context.Context, r Runner) (changed bool, err error) {
 	}
 	// always wait: an earlier run may have applied the manifest and failed here
 	for _, w := range argoWorkloads {
+		report(ctx, "waiting rollout %s", w)
 		if _, err := kubectl(ctx, r, nil, "-n", argoNS, "rollout", "status", w, "--timeout=5m"); err != nil {
 			return changed, fmt.Errorf("install argocd: wait %s: %w", w, err)
 		}
@@ -205,6 +207,7 @@ func (a appStatus) problems() string {
 // the timeout. On timeout the error lists the app's conditions and every
 // resource not Synced+Healthy.
 func WaitApp(ctx context.Context, r Runner, name string, timeout time.Duration) error {
+	report(ctx, "waiting application %s Synced/Healthy", name)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var last appStatus

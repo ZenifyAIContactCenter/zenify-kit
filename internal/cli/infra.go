@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -256,9 +257,9 @@ func parseRefs(in []string) (map[string]string, error) {
 
 func (d infraDeps) upCmd() *cobra.Command {
 	var (
-		local    bool
-		chartRef string
-		refFlags []string
+		local, verbose bool
+		chartRef       string
+		refFlags       []string
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -272,19 +273,24 @@ func (d infraDeps) upCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
-			return d.runUp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), chartRef, refs)
+			return d.runUp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), chartRef, refs, verbose)
 		},
 	}
 	cmd.Flags().BoolVar(&local, "local", false, "target the local k3s devbox (required)")
 	cmd.Flags().StringVar(&chartRef, "chart-ref", "", "helm repo ref for the platform and env charts (default: config, else the deployed platform's, else main)")
 	cmd.Flags().StringArrayVar(&refFlags, "ref", nil, "build <repo>=<ref> instead of the repo's baseRef (repeatable)")
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "print every build log line (always saved to the run log)")
 	return cmd
 }
 
-func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef string, refs map[string]string) error {
+func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef string, refs map[string]string, verbose bool) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// Ctrl-C cancels the running step, so the view can stop cleanly and say
+	// where the run stopped
+	ctx, stopSignals := signal.NotifyContext(ctx, os.Interrupt)
+	defer stopSignals()
 	home, cfg, err := d.loadConfig()
 	if err != nil {
 		return failStep("config", err)
@@ -306,114 +312,175 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 			return exitcode.New(exitcode.BadArgs, fmt.Errorf("--ref: unknown repo %q (valid: %s)", repo, strings.Join(valid, ", ")))
 		}
 	}
-	if ps := d.preflight(ws); len(ps) > 0 {
-		for _, p := range ps {
-			fmt.Fprintf(errW, "problem %s: %s\n  fix: %s\n", p.Check, p.Detail, p.Fix)
-		}
-		return failStep("preflight", fmt.Errorf("%d problem(s), nothing was changed", len(ps)))
-	}
-	fmt.Fprintln(out, "preflight      ok")
-	unlock, err := d.lock(home)
+	logFile, logPath, err := openRunLog(home, "up")
 	if err != nil {
-		return failStep("lock", err)
+		return failStep("log", err)
 	}
 	defer func() {
+		if cerr := logFile.Close(); cerr != nil {
+			fmt.Fprintf(errW, "warning: close run log: %v\n", cerr)
+		}
+	}()
+	steps := []string{"preflight", "k3s", "target", "argocd", "repo-credential", "platform", "ca", "dns", "buildctl"}
+	for _, b := range w.Builds {
+		steps = append(steps, "build "+b.Image)
+	}
+	steps = append(steps, "env-ca", "env-phase-1", "env-phase-2", "state")
+	v := newStepView(out, "zenify infra up", "zenify infra up --local", steps, verbose, logFile, logPath)
+
+	var unlock func() error
+	defer func() {
+		if unlock == nil {
+			return
+		}
 		if uerr := unlock(); uerr != nil {
 			fmt.Fprintf(errW, "warning: release infra lock: %v\n", uerr)
 		}
 	}()
+	if err := v.run(ctx, "preflight", func(context.Context) (stepOutcome, error) {
+		if ps := d.preflight(ws); len(ps) > 0 {
+			for _, p := range ps {
+				fmt.Fprintf(errW, "problem %s: %s\n  fix: %s\n", p.Check, p.Detail, p.Fix)
+			}
+			return stepOutcome{}, fmt.Errorf("%d problem(s), nothing was changed", len(ps))
+		}
+		var err error
+		if unlock, err = d.lock(home); err != nil {
+			return stepOutcome{}, fmt.Errorf("lock: %w", err)
+		}
+		return stepOutcome{detail: "ok"}, nil
+	}); err != nil {
+		return err
+	}
 	r := d.runner
 
 	// k3s first: a restart that failed in an earlier run left the API down,
 	// and only InstallK3s's restart-marker retry brings it back
-	changed, err := d.installK3s(ctx, r)
-	if err != nil {
-		return failStep("k3s", err)
-	}
-	fmt.Fprintf(out, "k3s            %s\n", changedWord(changed))
-	// the target and the drift check come before anything is applied to Argo
-	tg, err := d.resolveTarget(ctx, home, cfg, chartRef)
-	if err != nil {
-		return failStep("target", err)
-	}
-	if err := tg.drift(); err != nil {
-		return failStep("target", err)
-	}
-	domain, chartRef := tg.domain, tg.chartRef
-	fmt.Fprintf(out, "target         domain %s (%s), chart ref %s (%s)\n", domain, tg.domainFrom, chartRef, tg.refFrom)
-	if changed, err = d.installArgo(ctx, r); err != nil {
-		return failStep("argocd", err)
-	}
-	fmt.Fprintf(out, "argocd         %s\n", changedWord(changed))
-	tok, err := r.Run(ctx, nil, "gh", "auth", "token")
-	if err != nil {
-		return failStep("repo-credential", fmt.Errorf("gh auth token: %w", err))
-	}
-	if err := d.setRepoCred(ctx, r, w.HelmRepoURL, strings.TrimSpace(string(tok))); err != nil {
-		return failStep("repo-credential", err)
-	}
-	fmt.Fprintln(out, "repo-credential applied")
-	if err := d.applyPlatform(ctx, r, w.HelmRepoURL, domain, chartRef); err != nil {
-		return failStep("platform", err)
-	}
-	if err := d.waitApp(ctx, r, infra.PlatformApp, platformTimeout); err != nil {
-		return failStep("platform", err)
-	}
-	fmt.Fprintf(out, "platform       %s Synced/Healthy at %s\n", infra.PlatformApp, chartRef)
-	pem, err := d.fetchCA(ctx, r)
-	if err != nil {
-		return failStep("ca", err)
-	}
-	if changed, err = d.installCA(ctx, r, home, pem); err != nil {
-		return failStep("ca", err)
-	}
-	fmt.Fprintf(out, "ca             %s\n", changedWord(changed))
-	if changed, err = d.splitDNS(ctx, r, domain); err != nil {
-		return failStep("dns", err)
-	}
-	// always restart: cni0 may have been recreated since the unit last ran
-	if err := d.restartDNS(ctx, r); err != nil {
-		return failStep("dns", err)
-	}
-	fmt.Fprintf(out, "dns            %s (restarted)\n", changedWord(changed))
-
-	images, err := d.buildImages(ctx, out, w, home, ws, domain, refs)
-	if err != nil {
-		return failStep("build", err)
-	}
-	slug := infra.BaseSlug
-	if err := d.applyEnv(ctx, out, w, slug, domain, chartRef, images, pem); err != nil {
+	if err := v.run(ctx, "k3s", func(ctx context.Context) (stepOutcome, error) {
+		changed, err := d.installK3s(ctx, r)
+		return stepOutcome{detail: changedWord(changed)}, err
+	}); err != nil {
 		return err
 	}
-	created := time.Now().UTC()
-	if tg.state != nil && !tg.state.CreatedAt.IsZero() {
-		created = tg.state.CreatedAt // a rerun keeps when the devbox was first set up
+	// the target and the drift check come before anything is applied to Argo
+	var tg infraTarget
+	if err := v.run(ctx, "target", func(ctx context.Context) (stepOutcome, error) {
+		var err error
+		if tg, err = d.resolveTarget(ctx, home, cfg, chartRef); err != nil {
+			return stepOutcome{}, err
+		}
+		if err := tg.drift(); err != nil {
+			return stepOutcome{}, err
+		}
+		return stepOutcome{detail: fmt.Sprintf("domain %s (%s), chart ref %s (%s)", tg.domain, tg.domainFrom, tg.chartRef, tg.refFrom)}, nil
+	}); err != nil {
+		return err
 	}
-	if err := d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: created}); err != nil {
-		return failStep("state", err)
+	domain, chartRef := tg.domain, tg.chartRef
+	if err := v.run(ctx, "argocd", func(ctx context.Context) (stepOutcome, error) {
+		changed, err := d.installArgo(ctx, r)
+		return stepOutcome{detail: changedWord(changed)}, err
+	}); err != nil {
+		return err
 	}
+	if err := v.run(ctx, "repo-credential", func(ctx context.Context) (stepOutcome, error) {
+		tok, err := r.Run(ctx, nil, "gh", "auth", "token")
+		if err != nil {
+			return stepOutcome{}, fmt.Errorf("gh auth token: %w", err)
+		}
+		return stepOutcome{detail: "applied"}, d.setRepoCred(ctx, r, w.HelmRepoURL, strings.TrimSpace(string(tok)))
+	}); err != nil {
+		return err
+	}
+	if err := v.run(ctx, "platform", func(ctx context.Context) (stepOutcome, error) {
+		if err := d.applyPlatform(ctx, r, w.HelmRepoURL, domain, chartRef); err != nil {
+			return stepOutcome{}, err
+		}
+		if err := d.waitApp(ctx, r, infra.PlatformApp, platformTimeout); err != nil {
+			return stepOutcome{}, err
+		}
+		return stepOutcome{detail: fmt.Sprintf("%s Synced/Healthy at %s", infra.PlatformApp, chartRef)}, nil
+	}); err != nil {
+		return err
+	}
+	var pem []byte
+	if err := v.run(ctx, "ca", func(ctx context.Context) (stepOutcome, error) {
+		var err error
+		if pem, err = d.fetchCA(ctx, r); err != nil {
+			return stepOutcome{}, err
+		}
+		changed, err := d.installCA(ctx, r, home, pem)
+		return stepOutcome{detail: changedWord(changed)}, err
+	}); err != nil {
+		return err
+	}
+	if err := v.run(ctx, "dns", func(ctx context.Context) (stepOutcome, error) {
+		changed, err := d.splitDNS(ctx, r, domain)
+		if err != nil {
+			return stepOutcome{}, err
+		}
+		// always restart: cni0 may have been recreated since the unit last ran
+		return stepOutcome{detail: changedWord(changed) + " (restarted)"}, d.restartDNS(ctx, r)
+	}); err != nil {
+		return err
+	}
+
+	images, err := d.buildImages(ctx, v, w, home, ws, domain, refs)
+	if err != nil {
+		return err
+	}
+	slug := infra.BaseSlug
+	if err := d.applyEnv(ctx, v, w, slug, domain, chartRef, images, pem); err != nil {
+		return err
+	}
+	if err := v.run(ctx, "state", func(context.Context) (stepOutcome, error) {
+		created := time.Now().UTC()
+		if tg.state != nil && !tg.state.CreatedAt.IsZero() {
+			created = tg.state.CreatedAt // a rerun keeps when the devbox was first set up
+		}
+		return stepOutcome{detail: "saved"}, d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: created})
+	}); err != nil {
+		return err
+	}
+	v.close("ready")
 	fmt.Fprintf(out, "\nready: %s\n", strings.Join(infra.EnvURLs(w, slug, domain), " "))
 	fmt.Fprintf(out, "seed login: email %s, domain %s (%s)\n", w.Seed.Accounts[0].Email, w.Seed.Tenant, w.Seed.PasswordHint)
 	return nil
 }
 
-// buildImages builds the workspace's images in order; it returns repo → tag.
-func (d infraDeps) buildImages(ctx context.Context, out io.Writer, w infra.Workspace, home, ws, domain string, refs map[string]string) (map[string]string, error) {
-	if _, err := d.ensureBuildctl(ctx, d.runner, home); err != nil {
+// buildImages builds the workspace's images in order, one step each; it
+// returns repo → tag.
+func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspace, home, ws, domain string, refs map[string]string) (map[string]string, error) {
+	var ts []infra.BuildTarget
+	if err := v.run(ctx, "buildctl", func(ctx context.Context) (stepOutcome, error) {
+		if _, err := d.ensureBuildctl(ctx, d.runner, home); err != nil {
+			return stepOutcome{}, err
+		}
+		var err error
+		ts, err = d.coreTargets(w, ws, domain, infra.BaseSlug)
+		return stepOutcome{detail: fmt.Sprintf("ready, %d image(s) to check", len(ts))}, err
+	}); err != nil {
 		return nil, err
 	}
-	ts, err := d.coreTargets(w, ws, domain, infra.BaseSlug)
-	if err != nil {
-		return nil, err
+	if len(ts) != len(w.Builds) {
+		return nil, failStep("buildctl", fmt.Errorf("%d build targets for %d builds in infra.json", len(ts), len(w.Builds)))
 	}
 	images := map[string]string{}
-	for _, t := range ts {
-		res, err := d.build(ctx, d.builder, ws, t, refs)
-		if err != nil {
+	for i, t := range ts {
+		name := "build " + w.Builds[i].Image // targets keep the order of builds[]
+		if err := v.run(ctx, name, func(ctx context.Context) (stepOutcome, error) {
+			res, err := d.build(ctx, d.builder, ws, t, refs)
+			if err != nil {
+				return stepOutcome{}, err
+			}
+			images[t.Repo] = res.Tag
+			if !res.Built {
+				return stepOutcome{detail: res.Tag + " unchanged (tag exists)", skipped: true}, nil
+			}
+			return stepOutcome{detail: res.Tag + " built"}, nil
+		}); err != nil {
 			return nil, err
 		}
-		fmt.Fprintf(out, "build          %s:%s %s (%s)\n", res.Image, res.Tag, changedWord(res.Built), res.Duration.Round(time.Second))
-		images[t.Repo] = res.Tag
 	}
 	return images, nil
 }
@@ -421,41 +488,44 @@ func (d infraDeps) buildImages(ctx context.Context, out io.Writer, w infra.Works
 // applyEnv publishes the local CA into env slug's namespace, then brings the
 // env up in two phases: datastores + seed, then the apps. An env where any
 // phase-2 app already exists skips phase 1: re-applying it would prune them.
-func (d infraDeps) applyEnv(ctx context.Context, out io.Writer, w infra.Workspace, slug, domain, chartRef string, images map[string]string, caPEM []byte) error {
+func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace, slug, domain, chartRef string, images map[string]string, caPEM []byte) error {
 	r := d.runner
 	root := infra.EnvAppName(slug)
-	if err := d.applyEnvCA(ctx, r, slug, caPEM); err != nil {
-		return failStep("env-ca", err)
-	}
-	fmt.Fprintf(out, "env-ca         %s/%s applied\n", infra.EnvNamespace(slug), infra.EnvCAConfigMap)
-	hasApps := false
-	for _, name := range infra.PhaseTwoApps(w, slug) {
-		ok, err := d.appExists(ctx, r, name)
-		if err != nil {
-			return failStep("env-phase-1", err)
-		}
-		hasApps = hasApps || ok
+	if err := v.run(ctx, "env-ca", func(ctx context.Context) (stepOutcome, error) {
+		return stepOutcome{detail: infra.EnvNamespace(slug) + "/" + infra.EnvCAConfigMap + " applied"}, d.applyEnvCA(ctx, r, slug, caPEM)
+	}); err != nil {
+		return err
 	}
 	for phase := 1; phase <= 2; phase++ {
-		step := fmt.Sprintf("env-phase-%d", phase)
-		if phase == 1 && hasApps {
-			fmt.Fprintf(out, "%-14s skipped (apps already deployed)\n", step)
-			continue
-		}
-		m, err := infra.RenderEnvApp(w, slug, domain, chartRef, images, phase)
-		if err != nil {
-			return failStep(step, err)
-		}
-		changed, err := d.apply(ctx, r, m)
-		if err != nil {
-			return failStep(step, err)
-		}
-		for _, name := range append([]string{root}, infra.ChildApps(w, slug, phase)...) {
-			if err := d.waitApp(ctx, r, name, envTimeout); err != nil {
-				return failStep(step, err)
+		if err := v.run(ctx, fmt.Sprintf("env-phase-%d", phase), func(ctx context.Context) (stepOutcome, error) {
+			if phase == 1 {
+				for _, name := range infra.PhaseTwoApps(w, slug) {
+					ok, err := d.appExists(ctx, r, name)
+					if err != nil {
+						return stepOutcome{}, err
+					}
+					if ok {
+						return stepOutcome{detail: "skipped (apps already deployed)", skipped: true}, nil
+					}
+				}
 			}
+			m, err := infra.RenderEnvApp(w, slug, domain, chartRef, images, phase)
+			if err != nil {
+				return stepOutcome{}, err
+			}
+			changed, err := d.apply(ctx, r, m)
+			if err != nil {
+				return stepOutcome{}, err
+			}
+			for _, name := range append([]string{root}, infra.ChildApps(w, slug, phase)...) {
+				if err := d.waitApp(ctx, r, name, envTimeout); err != nil {
+					return stepOutcome{}, err
+				}
+			}
+			return stepOutcome{detail: changedWord(changed) + ", Synced/Healthy"}, nil
+		}); err != nil {
+			return err
 		}
-		fmt.Fprintf(out, "%-14s %s, Synced/Healthy\n", step, changedWord(changed))
 	}
 	return nil
 }
@@ -653,6 +723,8 @@ func (d infraDeps) runDown(ctx context.Context, out io.Writer, purge, applyFlag 
 	if err != nil {
 		return failStep("home", err)
 	}
+	ctx, stopSignals := signal.NotifyContext(ctx, os.Interrupt)
+	defer stopSignals()
 	unlock, err := d.lock(home)
 	if err != nil {
 		return failStep("lock", err)
@@ -662,63 +734,106 @@ func (d infraDeps) runDown(ctx context.Context, out io.Writer, purge, applyFlag 
 			fmt.Fprintf(out, "warning: release infra lock: %v\n", uerr)
 		}
 	}()
-	r := d.runner
-	k3s, err := d.k3sVersion(ctx, r)
+	logFile, logPath, err := openRunLog(home, "down")
 	if err != nil {
-		return failStep("k3s", err)
+		return failStep("log", err)
 	}
-	argo := ""
-	if k3s != "" {
-		if argo, err = d.argoVersion(ctx, r); err != nil {
-			return failStep("argocd", err)
+	defer func() {
+		if cerr := logFile.Close(); cerr != nil {
+			fmt.Fprintf(out, "warning: close run log: %v\n", cerr)
 		}
+	}()
+	steps := []string{"detect", "envs", "platform"}
+	if purge {
+		steps = append(steps, "trust-dns", "k3s", "state")
 	}
-	if argo != "" {
+	v := newStepView(out, "zenify infra down", "zenify infra down --local --apply", steps, false, logFile, logPath)
+	r := d.runner
+	argo := ""
+	if err := v.run(ctx, "detect", func(ctx context.Context) (stepOutcome, error) {
+		k3s, err := d.k3sVersion(ctx, r)
+		if err != nil {
+			return stepOutcome{}, fmt.Errorf("k3s: %w", err)
+		}
+		if k3s == "" {
+			return stepOutcome{detail: "k3s not installed"}, nil
+		}
+		if argo, err = d.argoVersion(ctx, r); err != nil {
+			return stepOutcome{}, fmt.Errorf("argocd: %w", err)
+		}
+		if argo == "" {
+			return stepOutcome{detail: "k3s " + k3s + ", ArgoCD not installed"}, nil
+		}
+		return stepOutcome{detail: "k3s " + k3s + ", ArgoCD " + argo}, nil
+	}); err != nil {
+		return err
+	}
+	if err := v.run(ctx, "envs", func(ctx context.Context) (stepOutcome, error) {
+		if argo == "" {
+			return stepOutcome{detail: "nothing to remove (k3s or ArgoCD not installed)", skipped: true}, nil
+		}
 		envs, err := d.envApps(ctx, r)
 		if err != nil {
-			return failStep("envs", err)
+			return stepOutcome{}, err
 		}
 		for _, name := range envs {
+			v.Sub("deleting " + name)
 			if err := d.deleteApp(ctx, r, name, false); err != nil {
-				return failStep("envs", err)
+				return stepOutcome{}, err
 			}
 			if err := d.deleteNamespace(ctx, r, name); err != nil { // root name == namespace env-<slug>
-				return failStep("envs", err)
+				return stepOutcome{}, err
 			}
-			fmt.Fprintf(out, "env            deleted %s\n", name)
+		}
+		if len(envs) == 0 {
+			return stepOutcome{detail: "none", skipped: true}, nil
+		}
+		return stepOutcome{detail: "deleted " + strings.Join(envs, ", ")}, nil
+	}); err != nil {
+		return err
+	}
+	if err := v.run(ctx, "platform", func(ctx context.Context) (stepOutcome, error) {
+		if argo == "" {
+			return stepOutcome{detail: "nothing to remove (k3s or ArgoCD not installed)", skipped: true}, nil
 		}
 		exists, err := d.appExists(ctx, r, infra.PlatformApp)
 		if err != nil {
-			return failStep("platform", err)
+			return stepOutcome{}, err
 		}
 		if exists {
+			v.Sub("deleting application " + infra.PlatformApp)
 			if err := d.deleteApp(ctx, r, infra.PlatformApp, true); err != nil {
-				return failStep("platform", err)
+				return stepOutcome{}, err
 			}
 		}
+		v.Sub("deleting namespace " + infra.PlatformNamespace)
 		if err := d.deleteNamespace(ctx, r, infra.PlatformNamespace); err != nil {
-			return failStep("platform", err)
+			return stepOutcome{}, err
 		}
-		fmt.Fprintf(out, "platform       deleted %s\n", infra.PlatformApp)
-	}
-	if argo == "" {
-		fmt.Fprintln(out, "cluster        nothing to remove (k3s or ArgoCD not installed)")
+		return stepOutcome{detail: "deleted " + infra.PlatformApp}, nil
+	}); err != nil {
+		return err
 	}
 	if !purge {
+		v.close("removed")
 		return nil
 	}
-	if err := d.removeTrust(ctx, r, home); err != nil {
-		return failStep("purge", err)
+	if err := v.run(ctx, "trust-dns", func(ctx context.Context) (stepOutcome, error) {
+		return stepOutcome{detail: "CA trust and split DNS removed"}, d.removeTrust(ctx, r, home)
+	}); err != nil {
+		return err
 	}
-	fmt.Fprintln(out, "purge          CA trust and split DNS removed")
-	if err := d.uninstallK3s(ctx, r); err != nil {
-		return failStep("purge", err)
+	if err := v.run(ctx, "k3s", func(ctx context.Context) (stepOutcome, error) {
+		return stepOutcome{detail: "k3s and its firewall removed"}, d.uninstallK3s(ctx, r)
+	}); err != nil {
+		return err
 	}
-	fmt.Fprintln(out, "purge          k3s and its firewall removed")
-	if err := d.removeState(home); err != nil {
-		return failStep("purge", err)
+	if err := v.run(ctx, "state", func(context.Context) (stepOutcome, error) {
+		return stepOutcome{detail: "state removed"}, d.removeState(home)
+	}); err != nil {
+		return err
 	}
-	fmt.Fprintln(out, "purge          state removed")
+	v.close("purged")
 	return nil
 }
 

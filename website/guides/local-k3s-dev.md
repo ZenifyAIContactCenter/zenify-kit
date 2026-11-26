@@ -8,7 +8,7 @@ Trang này dành cho người đã dựng devbox bằng [Devbox k3s cục bộ](
 
 ## Bốn lệnh của `zenify infra`
 
-- [`zenify infra up --local`](/reference/cli/zenify_infra_up): cài hoặc sửa k3s, ArgoCD, platform, CA, DNS, build image rồi dựng env `base`. Chạy lại được; bước đã xong in `unchanged`.
+- [`zenify infra up --local`](/reference/cli/zenify_infra_up): cài hoặc sửa k3s, ArgoCD, platform, CA, DNS, build image rồi dựng env `base`. Lệnh hiện từng bước đánh số với việc đang làm và thời gian chờ; log đầy đủ ở `~/.zenify/infra/logs/`. Chạy lại được; bước đã xong in `unchanged`.
 - [`zenify infra status --local`](/reference/cli/zenify_infra_status): sức khoẻ k3s, ArgoCD, platform, từng env, DNS và trust CA.
 - [`zenify infra show --local`](/reference/cli/zenify_infra_show): URL, repo, image tag của từng app, tài khoản seed, và mục `cluster` (kubeconfig, context, node, registry, ArgoCD, OpenBao nếu có).
 - [`zenify infra down --local`](/reference/cli/zenify_infra_down): mặc định chỉ preview; `--apply` xoá env và platform, `--purge` gỡ luôn k3s, CA, DNS và firewall.
@@ -91,6 +91,7 @@ Trong manifest dùng `image: registry.zenify.internal:5000/<name>:<tag>`. `zenif
 
 - `infra.json` (repo helm, image cần build, app của env, tài khoản seed) nằm ở `<knowledge store>/.config/infra.json`, thường là `~/.zenify/knowledge/.config/infra.json`. Schema xem [`zenify infra`](/reference/cli/zenify_infra).
 - `~/.zenify/infra/config.json`: domain, số env tối đa, chart ref (đổi bằng [`zenify infra config`](/reference/cli/zenify_infra_config)).
+- `~/.zenify/infra/logs/up-<thời điểm>.log`, `down-<thời điểm>.log`: log đầy đủ của từng lần chạy, gồm log build (secret đã che).
 - `~/.zenify/infra/state.json`: domain, phiên bản k3s, ArgoCD của lần `up` thành công gần nhất.
 
 ## Lỗi thường gặp

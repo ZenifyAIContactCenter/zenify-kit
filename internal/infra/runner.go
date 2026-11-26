@@ -47,6 +47,7 @@ type BuildRunner interface {
 	Runner
 	// RunEnv runs name with the current env plus env; a failure carries only
 	// the tail of stderr (build logs are long), with every value of env redacted.
+	// With a Progress on ctx, each stderr line also goes to its Output, redacted.
 	RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
 	// Start launches name in the background; stop kills it and waits for it.
 	Start(ctx context.Context, name string, args ...string) (stop func() error, err error)
@@ -63,6 +64,17 @@ func (execRunner) RunEnv(ctx context.Context, env []string, name string, args ..
 	cmd.Env = append(os.Environ(), env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if p := progressFrom(ctx); p != nil {
+		var secrets []string
+		for _, kv := range env {
+			if _, v, ok := strings.Cut(kv, "="); ok && v != "" {
+				secrets = append(secrets, v)
+			}
+		}
+		lw := &lineWriter{p: p, secrets: secrets}
+		defer lw.flush()
+		cmd.Stderr = io.MultiWriter(&stderr, lw)
+	}
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		// redact the env values (the secrets) before cutting the tail: a cut

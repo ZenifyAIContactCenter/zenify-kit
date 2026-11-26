@@ -187,7 +187,7 @@ func TestInfraUp_BuildFailureNamesStepAndSkipsState(t *testing.T) {
 		return infra.BuildResult{}, errors.New("buildctl: exit status 1")
 	}
 	_, _, err := runInfra(d, "up", "--local")
-	if exitcode.Code(err) == 0 || !strings.HasPrefix(err.Error(), "build: ") {
+	if exitcode.Code(err) == 0 || !strings.HasPrefix(err.Error(), "build team/base-ui: ") {
 		t.Fatalf("err = %v, want a build step error", err)
 	}
 	if indexOf(*steps, "save-state") >= 0 || indexOf(*steps, "apply phase 1") >= 0 {
@@ -203,7 +203,7 @@ func TestInfraUp_RerunUnchangedContinuesInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"k3s            unchanged", "argocd         unchanged", "https://web.zenify.test", "admin@demo.example"} {
+	for _, want := range []string{"✓ 2/18 k3s   unchanged", "✓ 4/18 argocd   unchanged", "https://web.zenify.test", "admin@demo.example"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -484,7 +484,7 @@ func TestInfraDown_FailureStopsLaterSteps(t *testing.T) {
 	d, steps, _ := fakeInfra(t, true)
 	d.uninstallK3s = func(context.Context, infra.Runner) error { return errors.New("k3s-uninstall.sh: exit status 1") }
 	_, _, err := runInfra(d, "down", "--local", "--purge", "--apply")
-	if exitcode.Code(err) == 0 || !strings.HasPrefix(err.Error(), "purge: ") {
+	if exitcode.Code(err) == 0 || !strings.HasPrefix(err.Error(), "k3s: ") {
 		t.Fatalf("err = %v", err)
 	}
 	if indexOf(*steps, "remove-state") >= 0 {

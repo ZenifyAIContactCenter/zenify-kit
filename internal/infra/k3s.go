@@ -222,6 +222,7 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		// every host file and the firewall are in place, so the start the
 		// installer does reads them; a restart right after would cut off the
 		// bootstrap (k3s leaves a CRD stuck at Established=False)
+		report(ctx, "running k3s installer %s", K3sVersion)
 		script, err := r.Run(ctx, nil, "curl", "-sfL", k3sInstaller)
 		if err != nil {
 			return changed, fmt.Errorf("install k3s: download installer: %w", err)
@@ -245,6 +246,7 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		if err := waitBootstrapped(ctx, r); err != nil {
 			return true, fmt.Errorf("install k3s: before restart: %w", err)
 		}
+		report(ctx, "restarting k3s")
 		if _, err := r.Run(ctx, nil, "sudo", "systemctl", "restart", "k3s"); err != nil {
 			return true, fmt.Errorf("install k3s: restart k3s: %w", err)
 		}
@@ -280,6 +282,7 @@ func mirrorLoaded(ctx context.Context, r Runner) (bool, error) {
 // waitNodeReady polls until every node reports Ready; read errors are expected
 // while the API server restarts.
 func waitNodeReady(ctx context.Context, r Runner) error {
+	report(ctx, "waiting node Ready")
 	ctx, cancel := context.WithTimeout(ctx, nodeReadyTimeout)
 	defer cancel()
 	var last string
@@ -313,6 +316,7 @@ func waitBootstrapped(ctx context.Context, r Runner) error {
 // waitCRDsEstablished polls the k3s CRDs; one that stays Established=False is
 // reported with its manual recovery (deleting a CRD is never done for the user).
 func waitCRDsEstablished(ctx context.Context, r Runner) error {
+	report(ctx, "waiting k3s CRDs Established")
 	ctx, cancel := context.WithTimeout(ctx, crdEstablishedTimeout)
 	defer cancel()
 	for {

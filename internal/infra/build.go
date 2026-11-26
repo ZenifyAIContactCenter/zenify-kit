@@ -102,6 +102,7 @@ type BuildResult struct {
 // removed afterwards, also on error.
 func BuildFromBase(ctx context.Context, r BuildRunner, ws string, t BuildTarget, refs map[string]string) (BuildResult, error) {
 	start := time.Now()
+	report(ctx, "fetching %s source", t.Repo)
 	dir, sha, cleanup, err := BaseSource(ctx, r, ws, t.Repo, refs[t.Repo])
 	if err != nil {
 		return BuildResult{}, err
@@ -395,6 +396,7 @@ func Build(ctx context.Context, r BuildRunner, ws string, t BuildTarget, tag str
 	if err != nil {
 		return false, fmt.Errorf("build %s: %w", ref, err)
 	}
+	report(ctx, "building %s", ref)
 	err = buildctlRun(ctx, r, buildctl, port, t, ref, env)
 	if serr := stop(); serr != nil {
 		err = errors.Join(err, serr)
