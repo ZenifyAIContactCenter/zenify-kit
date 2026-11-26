@@ -33,7 +33,7 @@ type renderedApp struct {
 
 func render(t *testing.T, phase int) renderedApp {
 	t.Helper()
-	b, err := RenderEnvApp("base", "quyentm.test", "main", testImages, ProfileCore, phase)
+	b, err := RenderEnvApp("base", "zenify.test", "main", testImages, ProfileCore, phase)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,18 +108,18 @@ func TestRenderEnvApp_Phase2SevenAppsNamesAndHosts(t *testing.T) {
 		}
 		return hs[0]
 	}
-	if h := dig(host("contact-center-web", "contact-center-web", "ingress", "hosts"), "host"); h != "web-base.quyentm.test" {
+	if h := dig(host("contact-center-web", "contact-center-web", "ingress", "hosts"), "host"); h != "web.zenify.test" {
 		t.Errorf("web host = %v", h)
 	}
-	if h := dig(host("contact-center-be", "api", "ingress", "hosts"), "host"); h != "be-base.quyentm.test" {
+	if h := dig(host("contact-center-be", "api", "ingress", "hosts"), "host"); h != "be.zenify.test" {
 		t.Errorf("be host = %v", h)
 	}
-	if h := dig(host("contact-center-hub", "hub", "ingress", "hosts"), "host"); h != "hub-base.quyentm.test" {
+	if h := dig(host("contact-center-hub", "hub", "ingress", "hosts"), "host"); h != "hub.zenify.test" {
 		t.Errorf("hub host = %v", h)
 	}
 	auth := host("contact-center-hub", "auth", "ingress", "hosts")
 	paths, _ := dig(auth, "paths").([]any)
-	if dig(auth, "host") != "hub-base.quyentm.test" || len(paths) != 1 || dig(paths[0], "path") != "/auth" {
+	if dig(auth, "host") != "hub.zenify.test" || len(paths) != 1 || dig(paths[0], "path") != "/auth" {
 		t.Errorf("auth host = %v", auth)
 	}
 	if tag := dig(vals, "contact-center-web", "values", "image", "tag"); tag != "sha-web0001-v12345678" {

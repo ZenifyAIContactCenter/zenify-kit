@@ -35,13 +35,13 @@ func TestStatus_ReadsAppsAndRealDNS(t *testing.T) {
 	if rep.Platform != (AppState{"Synced", "Healthy"}) || len(rep.Envs) != 1 || rep.Envs[0].Slug != "base" || rep.Envs[0].Health != "Progressing" {
 		t.Fatalf("report = %+v", rep)
 	}
-	if rep.Envs[0].URLs[0] != "https://web-base.old.test" {
+	if rep.Envs[0].URLs[0] != "https://web.old.test" {
 		t.Errorf("env url must use the env's own domain: %v", rep.Envs[0].URLs)
 	}
-	if rep.DNS.Host != "web-base.quyentm.test" || rep.DNS.Resolves {
+	if rep.DNS.Host != "web.quyentm.test" || rep.DNS.Resolves {
 		t.Fatalf("dns = %+v", rep.DNS)
 	}
-	if !r.ran("resolvectl query web-base.quyentm.test") {
+	if !r.ran("resolvectl query web.quyentm.test") {
 		t.Error("dns must come from a real resolvectl query")
 	}
 	for _, c := range r.calls {

@@ -43,9 +43,9 @@ func TestShow_URLsReposAndRunningTags(t *testing.T) {
 		t.Fatalf("report = %+v", rep)
 	}
 	want := []ShowApp{
-		{"be", "https://be-base.quyentm.test", "contact-center-be", "sha-be00001"},
-		{"hub", "https://hub-base.quyentm.test", "contact-center-hub", "sha-hub0001"},
-		{"web", "https://web-base.quyentm.test", "contact-center-web", "sha-web0001-v1234abcd"},
+		{"be", "https://be.quyentm.test", "contact-center-be", "sha-be00001"},
+		{"hub", "https://hub.quyentm.test", "contact-center-hub", "sha-hub0001"},
+		{"web", "https://web.quyentm.test", "contact-center-web", "sha-web0001-v1234abcd"},
 	}
 	got := rep.Envs[0].Apps
 	if len(got) != len(want) {
@@ -150,7 +150,7 @@ func TestEnvDomain_MissingFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := rep.Envs[0].Apps[0].URL; got != "https://be-base.fallback.test" {
+	if got := rep.Envs[0].Apps[0].URL; got != "https://be.fallback.test" {
 		t.Fatalf("url = %s", got)
 	}
 }

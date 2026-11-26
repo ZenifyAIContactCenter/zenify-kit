@@ -81,6 +81,15 @@ func CoreTargets(ws, domain, slug string) ([]BuildTarget, error) {
 	return ts, nil
 }
 
+// bareHosts is web's PREVIEW_BARE_HOSTS: "1" drops -<slug> from the base
+// env's hosts, matching Host.
+func bareHosts(slug string) string {
+	if slug == BaseSlug {
+		return "1"
+	}
+	return "0"
+}
+
 // CoreRepos lists the repos CoreTargets builds, in build order.
 func CoreRepos() []string {
 	var out []string
@@ -99,8 +108,9 @@ func coreTargets(domain, slug string) []BuildTarget {
 		{Repo: "contact-center-hub", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/contact-center-hub",
 			Secrets: []string{"npm_token", "npm_taskforcesh_token"}},
 		{Repo: "contact-center-web", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/contact-center-web",
-			Args:    map[string]string{"BUILD_MODE": "preview", "PREVIEW_SLUG": slug, "PREVIEW_DOMAIN": domain, "REGISTRY": RegistryHost, "BASE_TAG": BaseSpaTag},
-			EnvArgs: []string{"PREVIEW_SLUG", "PREVIEW_DOMAIN", "REGISTRY"},
+			Args: map[string]string{"BUILD_MODE": "preview", "PREVIEW_SLUG": slug, "PREVIEW_DOMAIN": domain, "REGISTRY": RegistryHost, "BASE_TAG": BaseSpaTag,
+				"PREVIEW_BARE_HOSTS": bareHosts(slug)},
+			EnvArgs: []string{"PREVIEW_SLUG", "PREVIEW_DOMAIN", "REGISTRY", "PREVIEW_BARE_HOSTS"},
 			Secrets: []string{"npm_token"}},
 		{Repo: "zenify-data-seed", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/zenify-data-seed"},
 	}

@@ -3,7 +3,7 @@ summary: Xem hoặc đặt domain và số env tối đa của devbox k3s cục 
 ---
 ## Khi nào dùng
 
-Khi domain mặc định `<github login>.test` không hợp, hoặc muốn giới hạn số env trên máy.
+Khi domain mặc định `zenify.test` không hợp (ví dụ hai devbox cùng mở ra một LAN), hoặc muốn giới hạn số env trên máy.
 
 ## Kết quả
 

@@ -162,8 +162,8 @@ type infraTarget struct {
 
 func explicitSource(from string) bool { return from == "flag" || from == "config" }
 
-// resolveTarget picks the domain (config, state, deployed platform, github
-// login) and chart ref (flag, config, deployed platform, main).
+// resolveTarget picks the domain (config, state, deployed platform,
+// zenify.test) and chart ref (flag, config, deployed platform, main).
 func (d infraDeps) resolveTarget(ctx context.Context, home string, cfg infra.Config, flagRef string) (infraTarget, error) {
 	var t infraTarget
 	var err error
@@ -181,14 +181,7 @@ func (d infraDeps) resolveTarget(ctx context.Context, home string, cfg infra.Con
 	case t.hasLive && t.live.Domain != "":
 		t.domain, t.domainFrom = t.live.Domain, "deployed platform"
 	default:
-		out, err := d.runner.Run(ctx, nil, "gh", "api", "user", "--jq", ".login")
-		if err != nil {
-			return t, fmt.Errorf("read github login: %w", err)
-		}
-		if t.domain, err = infra.DefaultDomain(strings.TrimSpace(string(out))); err != nil {
-			return t, err
-		}
-		t.domainFrom = "github login"
+		t.domain, t.domainFrom = infra.DefaultDomain, "default"
 	}
 	switch {
 	case flagRef != "":
@@ -672,7 +665,7 @@ func (d infraDeps) configCmd() *cobra.Command {
 			}
 			dom, ref := cfg.Domain, cfg.ChartRef
 			if dom == "" {
-				dom = "(unset: state, else the deployed platform, else <github login>.test)"
+				dom = "(unset: state, else the deployed platform, else " + infra.DefaultDomain + ")"
 			}
 			if ref == "" {
 				ref = "(unset: the deployed platform, else main)"

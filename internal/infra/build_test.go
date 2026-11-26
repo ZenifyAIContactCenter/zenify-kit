@@ -350,3 +350,36 @@ func TestBaseSourceRejectsOptionLikeRef(t *testing.T) {
 		t.Fatalf("git ran with an option-like ref: %v", r.calls)
 	}
 }
+
+// Business rule (FR-2.1): the base web bundle calls slug-less hosts
+// (be.zenify.test), any other env's bundle calls -<slug> hosts; the flag is in
+// the tag so a base image is never reused for a slug env or the reverse.
+func TestCoreTargetsWebBareHostsOnlyForBase(t *testing.T) {
+	ws := fakeWorkspace(t)
+	web := func(slug string) BuildTarget {
+		ts, err := CoreTargets(ws, "zenify.test", slug)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, x := range ts {
+			if x.Repo == "contact-center-web" {
+				return x
+			}
+		}
+		t.Fatal("no web target")
+		return BuildTarget{}
+	}
+	base, other := web(BaseSlug), web("feat-x")
+	if base.Args["PREVIEW_BARE_HOSTS"] != "1" || other.Args["PREVIEW_BARE_HOSTS"] != "0" {
+		t.Fatalf("PREVIEW_BARE_HOSTS base=%q other=%q", base.Args["PREVIEW_BARE_HOSTS"], other.Args["PREVIEW_BARE_HOSTS"])
+	}
+	flipped := base
+	flipped.Args = map[string]string{}
+	for k, v := range base.Args {
+		flipped.Args[k] = v
+	}
+	flipped.Args["PREVIEW_BARE_HOSTS"] = "0"
+	if VariantTag("sha-abc1234", base) == VariantTag("sha-abc1234", flipped) {
+		t.Fatal("PREVIEW_BARE_HOSTS is not part of the image tag")
+	}
+}

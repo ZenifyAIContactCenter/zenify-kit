@@ -20,7 +20,7 @@ Sau `zenify infra up --local`, hoặc khi một URL env không mở được, đ
 
 ## Kết quả
 
-Lệnh in phiên bản k3s và ArgoCD (hoặc `not installed`), sync/health của `local-platform` và của từng Application `env-<slug>` kèm URL web, be, hub theo domain của chính env đó. Domain mặc định lấy như `zenify infra up`: config, `state.json`, platform đang chạy, rồi `<github login>.test`. `dns.resolves` lấy từ một lần `resolvectl query web-<slug>.<domain>` thật và chỉ đúng khi câu trả lời là IP ingress của cluster (`10.43.200.80`), không tính wildcard `*.test` của resolver khác; `ca.trusted` đúng khi CA có trong kho CA hệ thống và trong NSS DB của bạn. Với `--json` lệnh in object `{k3s, argocd, platform:{sync,health}, envs:[{slug,sync,health,urls}], dns:{host,resolves}, ca:{trusted}}`.
+Lệnh in phiên bản k3s và ArgoCD (hoặc `not installed`), sync/health của `local-platform` và của từng Application `env-<slug>` kèm URL web, be, hub theo domain của chính env đó. Domain mặc định lấy như `zenify infra up`: config, `state.json`, platform đang chạy, rồi `zenify.test`. `dns.resolves` lấy từ một lần `resolvectl query` thật cho host web của env (`web.<domain>` với env `base`, `web-<slug>.<domain>` với env khác) và chỉ đúng khi câu trả lời là IP ingress của cluster (`10.43.200.80`), không tính wildcard `*.test` của resolver khác; `ca.trusted` đúng khi CA có trong kho CA hệ thống và trong NSS DB của bạn. Với `--json` lệnh in object `{k3s, argocd, platform:{sync,health}, envs:[{slug,sync,health,urls}], dns:{host,resolves}, ca:{trusted}}`.
 
 ## Cờ
 

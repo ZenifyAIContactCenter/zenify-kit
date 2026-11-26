@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"time"
 )
 
@@ -54,21 +52,15 @@ func RemoveState(home string) error {
 	return nil
 }
 
-var nonDomainChars = regexp.MustCompile(`[^a-z0-9-]+`)
-var dashRun = regexp.MustCompile(`-{2,}`)
+// DefaultDomain is the env domain when neither config, state nor a deployed
+// platform names one.
+const DefaultDomain = "zenify.test"
 
-// DefaultDomain derives "<login>.test" from a GitHub login.
-func DefaultDomain(ghLogin string) (string, error) {
-	s := nonDomainChars.ReplaceAllString(strings.ToLower(ghLogin), "-")
-	s = dashRun.ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	if s == "" {
-		return "", fmt.Errorf("infra: github login %q has no usable characters for a domain", ghLogin)
-	}
-	return s + ".test", nil
-}
-
-// Host returns the ingress host for a service in an environment slug.
+// Host returns the ingress host for a service in an environment slug: the base
+// env has no slug in its hosts (web.zenify.test), others do (web-x.zenify.test).
 func Host(svc, slug, domain string) string {
+	if slug == BaseSlug {
+		return svc + "." + domain
+	}
 	return svc + "-" + slug + "." + domain
 }

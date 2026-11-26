@@ -7,22 +7,14 @@ import (
 	"time"
 )
 
-func TestDefaultDomain(t *testing.T) {
-	cases := map[string]string{"QuyenTM_": "quyentm.test", "a..b": "a-b.test"}
-	for in, want := range cases {
-		got, err := DefaultDomain(in)
-		if err != nil || got != want {
-			t.Fatalf("DefaultDomain(%q) = %q, %v; want %q", in, got, err, want)
-		}
-	}
-	if _, err := DefaultDomain("__"); err == nil {
-		t.Fatal("DefaultDomain(\"__\") must fail")
-	}
-}
-
+// Business rule (FR-2.1): the base env's hosts carry no slug (web.zenify.test);
+// any other env keeps -<slug>, so two envs never share a host.
 func TestHost(t *testing.T) {
-	if got := Host("web", "base", "quyentm.test"); got != "web-base.quyentm.test" {
-		t.Fatalf("got %q", got)
+	if got := Host("web", BaseSlug, "zenify.test"); got != "web.zenify.test" {
+		t.Fatalf("base host = %q", got)
+	}
+	if got := Host("web", "feat-x", "zenify.test"); got != "web-feat-x.zenify.test" {
+		t.Fatalf("slug host = %q", got)
 	}
 }
 

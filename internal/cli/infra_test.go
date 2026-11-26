@@ -16,16 +16,13 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/infra"
 )
 
-// infraRunner records commands; gh answers with a fixed login/token.
+// infraRunner records commands; gh auth token answers a fixed token.
 type infraRunner struct{ calls []string }
 
 func (r *infraRunner) Run(_ context.Context, _ io.Reader, name string, args ...string) ([]byte, error) {
 	r.calls = append(r.calls, strings.Join(append([]string{name}, args...), " "))
 	if name == "gh" && len(args) > 0 && args[0] == "auth" {
 		return []byte("tok-secret\n"), nil
-	}
-	if name == "gh" {
-		return []byte("QuyenTM\n"), nil
 	}
 	return nil, nil
 }
@@ -184,7 +181,7 @@ func TestInfraUp_RerunUnchangedContinuesInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"k3s            unchanged", "argocd         unchanged", "https://web-base.quyentm.test", "admin@zenifytest.vn"} {
+	for _, want := range []string{"k3s            unchanged", "argocd         unchanged", "https://web.zenify.test", "admin@zenifytest.vn"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -263,8 +260,8 @@ func TestInfraStatus_JSONParses(t *testing.T) {
 			t.Errorf("missing key %s", k)
 		}
 	}
-	if !strings.Contains(out, "https://web-base.quyentm.test") {
-		t.Errorf("env url not from the gh login domain: %s", out)
+	if !strings.Contains(out, "https://web.zenify.test") {
+		t.Errorf("env url not on the default domain zenify.test: %s", out)
 	}
 }
 
@@ -325,7 +322,7 @@ func withLive(d infraDeps) infraDeps {
 }
 
 // With no config and no state, up keeps the deployed platform's domain and
-// chart ref instead of retargeting it to <gh login>.test at main.
+// chart ref instead of retargeting it to zenify.test at main.
 func TestInfraUp_FollowsDeployedPlatform(t *testing.T) {
 	d, _, _ := fakeInfra(t, true)
 	d = withLive(d)
@@ -338,7 +335,7 @@ func TestInfraUp_FollowsDeployedPlatform(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotDomain != "quyentm.test" || gotRef != "feat/local" || !strings.Contains(out, "https://web-base.quyentm.test") {
+	if gotDomain != "quyentm.test" || gotRef != "feat/local" || !strings.Contains(out, "https://web.quyentm.test") {
 		t.Fatalf("platform applied with %s@%s\n%s", gotDomain, gotRef, out)
 	}
 }
