@@ -9,7 +9,6 @@ title: Devbox k3s cục bộ
 ## Trước khi chạy
 
 - `gh auth login` xong: token của `gh` dùng để ArgoCD đọc repo helm và làm `NPM_TOKEN` khi build.
-- `NPM_TASKFORCESH_TOKEN` có trong env hoặc trong `zenify env set NPM_TASKFORCESH_TOKEN`.
 - Có `curl`, `git`, `gh`, `certutil` (gói `libnss3-tools`), tối thiểu 6 GiB RAM và 30 GiB trống cho `/var/lib/rancher`.
 
 Thiếu điều kiện nào, [`zenify infra up --local`](/reference/cli/zenify_infra_up) in hết các vấn đề kèm cách sửa và dừng trước khi đổi gì trên máy.

@@ -33,6 +33,7 @@ type BuildTarget struct {
 	Tag        string            // fixed tag; empty = derived from the commit (ImageTag)
 	Args       map[string]string // build args
 	Secrets    []string          // BuildKit secret ids; each is read from env key strings.ToUpper(id)
+	OptSecrets []string          // secret ids passed only when their env key is set; never required
 	EnvArgs    []string          // keys of Args that differ per env; they are baked into the image, so they enter its tag
 }
 
@@ -106,7 +107,7 @@ func coreTargets(domain, slug string) []BuildTarget {
 		{Repo: "contact-center-be", Dir: ".", Dockerfile: "Dockerfile", Target: "api", Image: RegistryHost + "/contact-center-be/api",
 			Secrets: []string{"npm_token"}},
 		{Repo: "contact-center-hub", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/contact-center-hub",
-			Secrets: []string{"npm_token", "npm_taskforcesh_token"}},
+			Secrets: []string{"npm_token"}, OptSecrets: []string{"npm_taskforcesh_token"}},
 		{Repo: "contact-center-web", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/contact-center-web",
 			Args: map[string]string{"BUILD_MODE": "preview", "PREVIEW_SLUG": slug, "PREVIEW_DOMAIN": domain, "REGISTRY": RegistryHost, "BASE_TAG": BaseSpaTag,
 				"PREVIEW_BARE_HOSTS": bareHosts(slug)},
@@ -247,33 +248,40 @@ func tagExists(ctx context.Context, image, tag string) (bool, error) {
 
 // secretEnv resolves each secret id to KEY=value for buildctl's env: the
 // process env first, then the kit env store; npm_token falls back to
-// `gh auth token`. A missing secret is an error naming its key.
-func secretEnv(ctx context.Context, r Runner, ws string, ids []string) (env, values []string, err error) {
-	if len(ids) == 0 {
-		return nil, nil, nil
+// `gh auth token`. A missing required secret is an error naming its key; an
+// optional one that is unset is left out. used lists the ids to pass.
+func secretEnv(ctx context.Context, r Runner, ws string, ids, optional []string) (used, env, values []string, err error) {
+	if len(ids) == 0 && len(optional) == 0 {
+		return nil, nil, nil, nil
 	}
 	store := devenv.Path(ws)
 	f, err := devenv.Load(store)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read %s: %w", store, err)
+		return nil, nil, nil, fmt.Errorf("read %s: %w", store, err)
 	}
 	lookup := devenv.Lookup(os.Getenv, f)
+	for _, id := range optional {
+		key := strings.ToUpper(id)
+		if v := lookup(key); v != "" {
+			used, env, values = append(used, id), append(env, key+"="+v), append(values, v)
+		}
+	}
 	for _, id := range ids {
 		key := strings.ToUpper(id)
 		v := lookup(key)
 		if v == "" && id == "npm_token" {
 			out, err := r.Run(ctx, nil, "gh", "auth", "token")
 			if err != nil {
-				return nil, nil, fmt.Errorf("NPM_TOKEN unset and gh auth token failed: %w", err)
+				return nil, nil, nil, fmt.Errorf("NPM_TOKEN unset and gh auth token failed: %w", err)
 			}
 			v = strings.TrimSpace(string(out))
 		}
 		if v == "" {
-			return nil, nil, fmt.Errorf("%s is not set (env or %s)", key, store)
+			return nil, nil, nil, fmt.Errorf("%s is not set (env or %s)", key, store)
 		}
-		env, values = append(env, key+"="+v), append(values, v)
+		used, env, values = append(used, id), append(env, key+"="+v), append(values, v)
 	}
-	return env, values, nil
+	return used, env, values, nil
 }
 
 // freePort returns a local TCP port that was free a moment ago.
@@ -308,10 +316,11 @@ func Build(ctx context.Context, r BuildRunner, ws string, t BuildTarget, tag str
 	if exists {
 		return false, nil
 	}
-	env, secrets, err := secretEnv(ctx, r, ws, t.Secrets)
+	used, env, secrets, err := secretEnv(ctx, r, ws, t.Secrets, t.OptSecrets)
 	if err != nil {
 		return false, fmt.Errorf("build %s: %w", ref, redact(err, secrets))
 	}
+	t.Secrets = used // buildctlRun passes --secret for exactly these
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false, fmt.Errorf("build %s: %w", ref, err)

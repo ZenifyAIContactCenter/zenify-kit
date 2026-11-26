@@ -143,13 +143,13 @@ func indexOf(steps []string, s string) int {
 func TestInfraUp_PreflightProblemsStopBeforeAnyChange(t *testing.T) {
 	d, steps, _ := fakeInfra(t, false)
 	d.preflight = func(string) []infra.Problem {
-		return []infra.Problem{{Check: "build-secrets", Detail: "NPM_TASKFORCESH_TOKEN is not set", Fix: "zenify env set NPM_TASKFORCESH_TOKEN"}}
+		return []infra.Problem{{Check: "build-secrets", Detail: "NPM_TOKEN is not set and gh auth token failed", Fix: "export NPM_TOKEN or run: gh auth login"}}
 	}
 	_, errOut, err := runInfra(d, "up", "--local")
 	if exitcode.Code(err) == 0 {
 		t.Fatal("want non-zero exit")
 	}
-	if !strings.Contains(errOut, "build-secrets") || !strings.Contains(errOut, "NPM_TASKFORCESH_TOKEN") {
+	if !strings.Contains(errOut, "build-secrets") || !strings.Contains(errOut, "NPM_TOKEN") {
 		t.Errorf("problem not printed: %q", errOut)
 	}
 	if len(*steps) != 0 {

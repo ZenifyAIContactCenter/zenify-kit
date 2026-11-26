@@ -2,8 +2,6 @@ package infra
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -23,8 +21,6 @@ type fakeProbe struct {
 	servicelb  bool
 	cfgErr     error
 	env        map[string]string
-	keys       map[string]bool
-	keyErr     error
 	cmds       map[string]bool
 	ghStatus   error
 	ghToken    error
@@ -43,16 +39,12 @@ func (f fakeProbe) EnvSet(k string) bool                { return f.env[k] != "" 
 func (f fakeProbe) HasCommand(n string) bool            { return f.cmds[n] }
 func (f fakeProbe) GhLoggedIn() error                   { return f.ghStatus }
 func (f fakeProbe) GhTokenAvailable() error             { return f.ghToken }
-func (f fakeProbe) LookupKey(k string) (bool, error) {
-	return f.keys[k] || f.env[k] != "", f.keyErr
-}
 
 func okProbe() fakeProbe {
 	return fakeProbe{
 		os: "linux", systemd: true, sudo: true,
 		mem: DefaultRequirements.MinMemBytes, disk: DefaultRequirements.MinDiskBytes,
 		env:  map[string]string{"NPM_TOKEN": "x"},
-		keys: map[string]bool{"NPM_TASKFORCESH_TOKEN": true},
 		cmds: map[string]bool{"curl": true, "git": true, "gh": true, "certutil": true},
 	}
 }
@@ -72,19 +64,18 @@ func TestPreflight(t *testing.T) {
 		{name: "k3s wrong version", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer = true, "v1.30.0+k3s1" }, wantCheck: "k3s", wantIn: []string{"v1.30.0+k3s1", testPin}},
 		{name: "servicelb enabled", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer = true, testPin }, wantCheck: "k3s", wantIn: []string{"--disable=servicelb"}},
 		{name: "k3s correct", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer, p.servicelb = true, testPin, true }},
+		// ruling 2026-11-26: NPM_TASKFORCESH_TOKEN is not used, so its absence is not a problem
+		{name: "taskforce token not required", mod: func(p *fakeProbe) { p.env = map[string]string{"NPM_TOKEN": "x"} }},
 		{
-			name: "missing taskforce token",
+			name: "no npm token and no gh token",
 			mod: func(p *fakeProbe) {
-				p.keys = nil
-				p.env = map[string]string{"NPM_TOKEN": "x", "OTHER_SECRET": "s3cr3t-planted"}
+				p.env, p.ghToken = map[string]string{"OTHER_SECRET": "s3cr3t-planted"}, errors.New("not logged in")
 			},
-			wantCheck: "build-secrets", wantIn: []string{"NPM_TASKFORCESH_TOKEN"}, wantNotIn: []string{"s3cr3t-planted"},
+			wantCheck: "build-secrets", wantIn: []string{"NPM_TOKEN"}, wantNotIn: []string{"s3cr3t-planted", "TASKFORCE"},
 		},
-		{name: "no npm token and no gh token", mod: func(p *fakeProbe) { p.env, p.ghToken = nil, errors.New("not logged in") }, wantCheck: "build-secrets", wantIn: []string{"NPM_TOKEN"}},
 		{name: "missing certutil", mod: func(p *fakeProbe) { p.cmds["certutil"] = false }, wantCheck: "tools", wantIn: []string{"libnss3-tools"}},
 		{name: "gh not logged in", mod: func(p *fakeProbe) { p.ghStatus = errors.New("exit 1: no accounts") }, wantCheck: "tools", wantIn: []string{"gh auth login", "no accounts"}},
 		{name: "disk probe error", mod: func(p *fakeProbe) { p.diskE = errors.New("statfs boom") }, wantCheck: "disk", wantIn: []string{"statfs boom"}},
-		{name: "env store unreadable", mod: func(p *fakeProbe) { p.keyErr = errors.New("permission denied") }, wantCheck: "build-secrets", wantIn: []string{"permission denied", "NPM_TASKFORCESH_TOKEN"}, wantNotIn: []string{"zenify env set"}},
 		{name: "k3s probe error", mod: func(p *fakeProbe) { p.k3sErr = errors.New("exec format error") }, wantCheck: "k3s", wantIn: []string{"exec format error"}},
 		{name: "k3s config parse error", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer, p.cfgErr = true, testPin, errors.New("parse yaml: bad") }, wantCheck: "k3s", wantIn: []string{"parse yaml: bad"}},
 		{name: "sudo prompts", mod: func(p *fakeProbe) { p.sudo = false }, wantCheck: "sudo"},
@@ -158,36 +149,5 @@ func TestConfigDisablesServicelb_Errors(t *testing.T) {
 		if _, err := configDisablesServicelb([]byte(in)); err == nil {
 			t.Errorf("%q: want error", in)
 		}
-	}
-}
-
-func TestRealProbe_LookupKeyStoreUnreadable(t *testing.T) {
-	ws := t.TempDir()
-	// .zenify/.env as a directory: Load fails with a real read error
-	if err := os.MkdirAll(filepath.Join(ws, ".zenify", ".env"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	ok, err := RealHostProbe(ws).LookupKey("NPM_TASKFORCESH_TOKEN")
-	if err == nil || ok {
-		t.Fatalf("want read error, got ok=%v err=%v", ok, err)
-	}
-}
-
-func TestRealProbe_LookupKeyMissingStoreIsNotAnError(t *testing.T) {
-	ok, err := RealHostProbe(t.TempDir()).LookupKey("ZNF_TEST_UNSET_KEY")
-	if err != nil || ok {
-		t.Fatalf("got ok=%v err=%v", ok, err)
-	}
-}
-
-func TestRealProbe_LookupKeyEnvWinsOverUnreadableStore(t *testing.T) {
-	ws := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(ws, ".zenify", ".env"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("ZNF_TEST_EXPORTED_KEY", "present")
-	ok, err := RealHostProbe(ws).LookupKey("ZNF_TEST_EXPORTED_KEY")
-	if err != nil || !ok {
-		t.Fatalf("exported key must pass despite broken store, got ok=%v err=%v", ok, err)
 	}
 }

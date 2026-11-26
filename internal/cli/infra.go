@@ -69,8 +69,8 @@ func defaultInfraDeps() infraDeps {
 		},
 		runner:  infra.ExecRunner(),
 		builder: infra.ExecBuildRunner(),
-		preflight: func(ws string) []infra.Problem {
-			return infra.Preflight(infra.RealHostProbe(ws), infra.DefaultRequirements, infra.K3sVersion)
+		preflight: func(string) []infra.Problem {
+			return infra.Preflight(infra.RealHostProbe(), infra.DefaultRequirements, infra.K3sVersion)
 		},
 		installK3s:      infra.InstallK3s,
 		installArgo:     infra.InstallArgo,

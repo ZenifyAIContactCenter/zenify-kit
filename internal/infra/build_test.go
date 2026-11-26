@@ -195,28 +195,55 @@ func TestBuildSkipsExistingTag(t *testing.T) {
 	}
 }
 
-func TestBuildHubNeedsTaskforceToken(t *testing.T) {
+func hubTarget(t *testing.T, ws string) BuildTarget {
+	t.Helper()
+	ts, err := CoreTargets(ws, "zenify.test", "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range ts {
+		if x.Repo == "contact-center-hub" {
+			x.Dir = t.TempDir()
+			return x
+		}
+	}
+	t.Fatal("no hub target")
+	return BuildTarget{}
+}
+
+func buildctlLine(t *testing.T, r *fakeBuildRunner) string {
+	t.Helper()
+	for _, c := range r.calls {
+		if filepath.Base(c.name) == "buildctl" {
+			return c.line()
+		}
+	}
+	t.Fatal("buildctl not called")
+	return ""
+}
+
+// Business rule (ruling 2026-11-26): the kit does not use NPM_TASKFORCESH_TOKEN;
+// a hub build without it must still run, and it is passed only when set.
+func TestBuildHubTaskforceTokenIsOptional(t *testing.T) {
 	buildEnv(t, http.StatusNotFound)
 	t.Setenv("NPM_TOKEN", "x")
 	t.Setenv("NPM_TASKFORCESH_TOKEN", "")
 	ws := fakeWorkspace(t)
-	ts, err := CoreTargets(ws, "quyentm.test", "base")
-	if err != nil {
+	r := &fakeBuildRunner{}
+	if built, err := Build(context.Background(), r, ws, hubTarget(t, ws), "sha-abcdef1"); err != nil || !built {
+		t.Fatalf("built=%v err=%v, want the hub build to run without the taskforce token", built, err)
+	}
+	if line := buildctlLine(t, r); strings.Contains(line, "npm_taskforcesh_token") || !strings.Contains(line, "--secret id=npm_token,env=NPM_TOKEN") {
+		t.Fatalf("buildctl secrets wrong when the token is unset: %s", line)
+	}
+
+	t.Setenv("NPM_TASKFORCESH_TOKEN", "tf-value")
+	r = &fakeBuildRunner{}
+	if _, err := Build(context.Background(), r, ws, hubTarget(t, ws), "sha-abcdef1"); err != nil {
 		t.Fatal(err)
 	}
-	var hub BuildTarget
-	for _, x := range ts {
-		if x.Repo == "contact-center-hub" {
-			hub = x
-		}
-	}
-	r := &fakeBuildRunner{}
-	_, err = Build(context.Background(), r, ws, hub, "sha-abcdef1")
-	if err == nil || !strings.Contains(err.Error(), "NPM_TASKFORCESH_TOKEN") {
-		t.Fatalf("err = %v, want it to name NPM_TASKFORCESH_TOKEN", err)
-	}
-	if len(r.started) != 0 {
-		t.Fatal("port-forward started although the build cannot run")
+	if line := buildctlLine(t, r); !strings.Contains(line, "--secret id=npm_taskforcesh_token,env=NPM_TASKFORCESH_TOKEN") || strings.Contains(line, "tf-value") {
+		t.Fatalf("set token must be passed via env only: %s", line)
 	}
 }
 

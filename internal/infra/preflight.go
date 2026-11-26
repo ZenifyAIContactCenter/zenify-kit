@@ -11,8 +11,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 )
 
 // Requirements are the minimum host resources for the local k3s devbox.
@@ -30,10 +28,9 @@ type Problem struct {
 }
 
 const (
-	rancherDir       = "/var/lib/rancher"
-	k3sConfigPath    = "/etc/rancher/k3s/config.yaml"
-	npmKeyName       = "NPM_TOKEN"
-	taskforceKeyName = "NPM_TASKFORCESH_TOKEN" //nolint:gosec // env key name, not a credential
+	rancherDir    = "/var/lib/rancher"
+	k3sConfigPath = "/etc/rancher/k3s/config.yaml"
+	npmKeyName    = "NPM_TOKEN"
 )
 
 // HostProbe abstracts every host fact Preflight reads, so tests can fake it.
@@ -55,9 +52,6 @@ type HostProbe interface {
 	GhLoggedIn() error
 	// GhTokenAvailable returns nil when `gh auth token` yields a token (never exposed).
 	GhTokenAvailable() error
-	// LookupKey reports whether key is set in the process env or the kit's personal
-	// env store; an error means the store could not be read.
-	LookupKey(name string) (bool, error)
 }
 
 // tools `infra up` needs, in check order, with the install hint for each.
@@ -113,11 +107,6 @@ func Preflight(h HostProbe, r Requirements, wantK3s string) []Problem {
 			add("build-secrets", npmKeyName+" is not set and gh auth token failed: "+err.Error(), "export "+npmKeyName+" or run: gh auth login")
 		}
 	}
-	if ok, err := h.LookupKey(taskforceKeyName); err != nil {
-		add("build-secrets", "cannot look up "+taskforceKeyName+": "+err.Error(), "make the zenify env store readable or export "+taskforceKeyName)
-	} else if !ok {
-		add("build-secrets", taskforceKeyName+" is not set in the env or the zenify env store", "run: zenify env set "+taskforceKeyName)
-	}
 
 	for _, t := range requiredTools {
 		if !h.HasCommand(t.cmd) {
@@ -132,11 +121,10 @@ func Preflight(h HostProbe, r Requirements, wantK3s string) []Problem {
 	return ps
 }
 
-type realProbe struct{ workspace string }
+type realProbe struct{}
 
-// RealHostProbe probes the actual host. workspace locates the kit's personal
-// env store (<workspace>/.zenify/.env) for LookupKey; the caller resolves it.
-func RealHostProbe(workspace string) HostProbe { return realProbe{workspace: workspace} }
+// RealHostProbe probes the actual host.
+func RealHostProbe() HostProbe { return realProbe{} }
 
 func (realProbe) GOOS() string { return goos }
 
@@ -265,18 +253,6 @@ func (realProbe) GhTokenAvailable() error {
 		return errors.New("gh auth token returned an empty token")
 	}
 	return nil
-}
-
-func (p realProbe) LookupKey(name string) (bool, error) {
-	if os.Getenv(name) != "" { // the process env always wins over the store
-		return true, nil
-	}
-	path := devenv.Path(p.workspace)
-	f, err := devenv.Load(path)
-	if err != nil {
-		return false, fmt.Errorf("cannot read %s: %w", path, err)
-	}
-	return devenv.Lookup(os.Getenv, f)(name) != "", nil
 }
 
 // withStderr appends a command's trimmed stderr to its exec error (nil stays nil).
