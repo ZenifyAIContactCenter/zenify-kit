@@ -439,3 +439,91 @@ func TestVariantTagCoversEveryBuildInput(t *testing.T) {
 		}
 	}
 }
+
+// defaultBranchFake answers BaseSource's git calls; symbolic-ref fails until
+// set-head ran when unsetHead, and set-head fails when setHeadErr.
+func defaultBranchFake(unsetHead bool, setHeadErr error) func(call) ([]byte, error) {
+	headSet := !unsetHead
+	return func(c call) ([]byte, error) {
+		line := c.line()
+		switch {
+		case strings.Contains(line, "symbolic-ref --short refs/remotes/origin/HEAD"):
+			if !headSet {
+				return nil, exitErr(128)
+			}
+			return []byte("origin/trunk\n"), nil
+		case strings.Contains(line, "remote set-head origin --auto"):
+			if setHeadErr != nil {
+				return nil, setHeadErr
+			}
+			headSet = true
+			return nil, nil
+		case strings.Contains(line, "rev-parse"):
+			return []byte("0123456789abcdef0123456789abcdef01234567\n"), nil
+		}
+		return nil, nil
+	}
+}
+
+// Business rule (fresh devbox): a repo that does not track
+// .claude/worktree.json still builds, from the remote default branch;
+// --ref and a worktree.json baseRef keep precedence, and a broken
+// worktree.json still fails.
+func TestBaseSourceDefaultBranchFallback(t *testing.T) {
+	buildEnv(t, http.StatusOK)
+	newWS := func() (string, string) {
+		ws := fakeWorkspace(t)
+		root := filepath.Join(ws, "repos", "demo-seed")
+		if err := os.Remove(filepath.Join(root, ".claude", "worktree.json")); err != nil {
+			t.Fatal(err)
+		}
+		return ws, root
+	}
+
+	ws, root := newWS()
+	r := &fakeRunner{respond: defaultBranchFake(false, nil)}
+	if _, _, _, err := BaseSource(context.Background(), r, ws, "demo-seed", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !r.ran("git -C "+root+" rev-parse --verify origin/trunk^{commit}") || r.ran("git -C "+root+" remote set-head") {
+		t.Fatalf("origin/HEAD not used: %v", r.calls)
+	}
+
+	ws, root = newWS()
+	r = &fakeRunner{respond: defaultBranchFake(true, nil)}
+	if _, _, _, err := BaseSource(context.Background(), r, ws, "demo-seed", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !r.ran("git -C "+root+" remote set-head origin --auto") || !r.ran("git -C "+root+" rev-parse --verify origin/trunk^{commit}") {
+		t.Fatalf("unset origin/HEAD not resolved via set-head: %v", r.calls)
+	}
+
+	ws, _ = newWS()
+	r = &fakeRunner{respond: defaultBranchFake(true, errors.New("no remote HEAD"))}
+	_, _, _, err := BaseSource(context.Background(), r, ws, "demo-seed", "")
+	if err == nil || !strings.Contains(err.Error(), "demo-seed") || !strings.Contains(err.Error(), "worktree.json baseRef") || !strings.Contains(err.Error(), "--ref demo-seed=") {
+		t.Fatalf("err = %v", err)
+	}
+
+	ws, root = newWS()
+	r = &fakeRunner{respond: defaultBranchFake(false, nil)}
+	if _, _, _, err := BaseSource(context.Background(), r, ws, "demo-seed", "origin/feat"); err != nil {
+		t.Fatal(err)
+	}
+	if r.ran("git -C "+root+" symbolic-ref") || !r.ran("git -C "+root+" rev-parse --verify origin/feat^{commit}") {
+		t.Fatalf("--ref lost precedence: %v", r.calls)
+	}
+
+	ws = fakeWorkspace(t)
+	root = filepath.Join(ws, "repos", "demo-seed")
+	if err := os.WriteFile(filepath.Join(root, ".claude", "worktree.json"), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r = &fakeRunner{respond: defaultBranchFake(false, nil)}
+	if _, _, _, err := BaseSource(context.Background(), r, ws, "demo-seed", ""); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+		t.Fatalf("malformed worktree.json err = %v", err)
+	}
+	if r.ran("git") {
+		t.Fatalf("git ran despite a broken worktree.json: %v", r.calls)
+	}
+}

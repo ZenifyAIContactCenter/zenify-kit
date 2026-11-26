@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -123,18 +124,28 @@ func BuildFromBase(ctx context.Context, r BuildRunner, ws string, t BuildTarget,
 // worktrees, and their admin entries, are never touched.
 func BaseSource(ctx context.Context, r Runner, ws, repo, ref string) (dir, sha string, cleanup func() error, err error) {
 	root := filepath.Join(ws, "repos", repo)
+	useDefault := false // no worktree.json: build the remote default branch
 	if ref == "" {
 		cfg, err := wt.Load(root)
-		if err != nil {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			useDefault = true
+		case err != nil:
 			return "", "", nil, fmt.Errorf("base source %s: %w", repo, err)
+		default:
+			ref = cfg.BaseRef
 		}
-		ref = cfg.BaseRef
 	}
 	if strings.HasPrefix(ref, "-") {
 		return "", "", nil, fmt.Errorf("base source %s: ref %q must not start with '-'", repo, ref)
 	}
 	if _, err := r.Run(ctx, nil, "git", "-C", root, "fetch", "origin"); err != nil {
 		return "", "", nil, fmt.Errorf("base source %s: fetch: %w", repo, err)
+	}
+	if useDefault {
+		if ref, err = remoteDefaultBranch(ctx, r, root); err != nil {
+			return "", "", nil, fmt.Errorf("base source %s: no .claude/worktree.json baseRef and %w; add a worktree.json baseRef or pass --ref %s=<ref>", repo, err, repo)
+		}
 	}
 	out, err := r.Run(ctx, nil, "git", "-C", root, "rev-parse", "--verify", ref+"^{commit}")
 	if err != nil {
@@ -186,6 +197,31 @@ func BaseSource(ctx context.Context, r Runner, ws, repo, ref string) (dir, sha s
 		return "", "", nil, fmt.Errorf("base source %s: add temp worktree %s: %w", repo, dir, err)
 	}
 	return dir, sha, remove, nil
+}
+
+// remoteDefaultBranch returns origin's default branch (e.g. origin/main) from
+// refs/remotes/origin/HEAD, asking the remote once when that ref is unset (a
+// clone made without it, e.g. by an older git or a mirror).
+func remoteDefaultBranch(ctx context.Context, r Runner, root string) (string, error) {
+	head := func() (string, error) {
+		out, err := r.Run(ctx, nil, "git", "-C", root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+		return strings.TrimSpace(string(out)), err
+	}
+	// a failure here means origin/HEAD is unset; the retry below reports any real error
+	if ref, err := head(); err == nil && ref != "" {
+		return ref, nil
+	}
+	if _, err := r.Run(ctx, nil, "git", "-C", root, "remote", "set-head", "origin", "--auto"); err != nil {
+		return "", fmt.Errorf("git remote set-head origin --auto: %w", err)
+	}
+	ref, err := head()
+	if err != nil {
+		return "", fmt.Errorf("origin/HEAD unset after git remote set-head: %w", err)
+	}
+	if ref == "" || strings.HasPrefix(ref, "-") {
+		return "", fmt.Errorf("origin/HEAD resolved to %q", ref)
+	}
+	return ref, nil
 }
 
 // worktreeListed reports whether `git worktree list --porcelain` output names dir.

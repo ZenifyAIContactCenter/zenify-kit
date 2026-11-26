@@ -32,7 +32,7 @@ Lệnh chỉ nhận trạng thái Synced/Healthy khi Argo đã so sánh với đ
 |---|---|
 | `--local` | Bắt buộc: nhắm devbox k3s cục bộ. |
 | `--chart-ref` | Ref của repo helm cho chart platform và env. Mặc định là `chartRef` trong config, không có thì ref của platform đang chạy, không có nữa thì `main`. |
-| `--ref` | `<repo>=<ref>` để build repo đó từ ref khác `baseRef` của nó; lặp lại được. |
+| `--ref` | `<repo>=<ref>` để build repo đó từ ref khác `baseRef` của nó; lặp lại được. Không có `--ref` thì dùng `baseRef` trong `.claude/worktree.json` của repo; repo không có file đó (máy mới) thì build từ nhánh mặc định của origin (`origin/HEAD`, tự chạy `git remote set-head origin --auto` một lần nếu chưa đặt). File có nhưng lỗi thì lệnh dừng. |
 
 ## Ví dụ
 
