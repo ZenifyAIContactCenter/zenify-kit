@@ -15,7 +15,8 @@ Pick every row whose signal appears in the task's files or diff. Several rows ma
 | Crosses a service boundary: Redis pub/sub `publish`/`subscribe`, a BullMQ queue/job, an HTTP call between services, a change-stream event | `znf:service-integration` |
 | Express controller / service / middleware / route file (`app/controller`, `app/services`, `app/routes`, `router.get(`) | `znf:express-service-patterns` |
 | NestJS module / controller / provider / guard / pipe (`@Module(`, `@Controller(`, `@Injectable(`, `@InjectModel(`) | `znf:nestjs-patterns` |
-| React component, hook, form or route (`.tsx`/`.jsx`, `useState`, `useQuery`, a form schema) | `znf:react-patterns` |
+| React **web** component, hook, form or route (`.tsx`/`.jsx` in a Vite/browser app, `useState`, `useQuery`, a form schema) | `znf:react-patterns` |
+| React Native app code: a repo with a `react-native` dependency and `ios/` `android/` folders (`StyleSheet.create`, `NativeModules`, a permission request, a native module) | `znf:react-native-patterns` |
 | Any edit inside repo X that has `X/.claude/skills/<x>-conventions/` | `<x>-conventions` (e.g. `be-conventions`) |
 | None of the above (Go, shell, docs, config, kit assets) | `none` |
 
