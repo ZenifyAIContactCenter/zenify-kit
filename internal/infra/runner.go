@@ -3,6 +3,8 @@ package infra
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -145,17 +147,30 @@ func readRootFile(ctx context.Context, r Runner, p string) (data []byte, exists 
 	return out, true, nil
 }
 
+// removeRootTemp deletes a temp file a failed write left behind.
+func removeRootTemp(ctx context.Context, r Runner, tmp string) error {
+	if _, err := r.Run(context.WithoutCancel(ctx), nil, "sudo", "rm", "-f", tmp); err != nil {
+		return fmt.Errorf("remove %s: %w", tmp, err)
+	}
+	return nil
+}
+
 // writeRootFile writes content to p via a temp file + rename.
 func writeRootFile(ctx context.Context, r Runner, p string, content []byte) error {
 	if _, err := r.Run(ctx, nil, "sudo", "install", "-d", "-m", "0755", path.Dir(p)); err != nil {
 		return fmt.Errorf("mkdir %s: %w", path.Dir(p), err)
 	}
-	tmp := p + ".zenify.tmp"
+	// a unique temp per write: two writers never truncate or move each other's file
+	var rnd [8]byte
+	if _, err := rand.Read(rnd[:]); err != nil {
+		return fmt.Errorf("temp name for %s: %w", p, err)
+	}
+	tmp := p + ".zenify-" + hex.EncodeToString(rnd[:]) + ".tmp"
 	if _, err := r.Run(ctx, bytes.NewReader(content), "sudo", "tee", tmp); err != nil {
-		return fmt.Errorf("write %s: %w", tmp, err)
+		return errors.Join(fmt.Errorf("write %s: %w", tmp, err), removeRootTemp(ctx, r, tmp))
 	}
 	if _, err := r.Run(ctx, nil, "sudo", "mv", "-f", tmp, p); err != nil {
-		return fmt.Errorf("rename %s to %s: %w", tmp, p, err)
+		return errors.Join(fmt.Errorf("rename %s to %s: %w", tmp, p, err), removeRootTemp(ctx, r, tmp))
 	}
 	return nil
 }

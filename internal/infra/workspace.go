@@ -112,6 +112,10 @@ var (
 	dnsLabelRe  = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 )
 
+// reservedAppKeys are top-level app-of-apps values, not apps: an app with
+// such a key would overwrite env or global.targetRevision.
+var reservedAppKeys = []string{"env", "environment", "global", "apps"}
+
 // maxSlugLen is the longest env slug slugRe allows; an app host label is
 // <svc>-<slug>, so svc (and key, for <key>-<slug>) gets 63-1-maxSlugLen bytes.
 const (
@@ -142,7 +146,7 @@ func (w Workspace) validate() error {
 	need(w.Seed.Tenant != "", "seed.tenant")
 	need(w.Seed.PasswordHint != "", "seed.passwordHint")
 	need(len(w.Seed.Accounts) > 0, "seed.accounts")
-	builds := map[string]bool{}
+	builds, images := map[string]bool{}, map[string]bool{}
 	for i, b := range w.Builds {
 		p := fmt.Sprintf("builds[%d].", i)
 		need(repoNameRe.MatchString(b.Repo) && !strings.Contains(b.Repo, ".."), p+"repo (^[a-z0-9][a-z0-9._-]*$, no ..)")
@@ -151,6 +155,10 @@ func (w Workspace) validate() error {
 		need(b.Dockerfile != "" && filepath.IsLocal(b.Dockerfile), p+"dockerfile (a relative path inside the context)")
 		need(imagePathRe.MatchString(b.Image), p+"image (registry path: lower-case [a-z0-9] parts joined by . _ - /)")
 		need(b.Tag == "" || imageTagRe.MatchString(b.Tag), p+"tag (^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$)")
+		// a fixed tag is reused as is, so it cannot carry per-env args
+		need(b.Tag == "" || len(b.EnvArgs) == 0, p+"tag (a fixed tag cannot be combined with envArgs)")
+		need(!images[b.Image], p+"image (duplicate: two builds would share tags)")
+		images[b.Image] = true
 		for _, id := range append(slices.Clone(b.Secrets), b.OptionalSecrets...) {
 			need(secretIDRe.MatchString(id), p+"secrets/optionalSecrets "+strconv.Quote(id)+" (^[a-z0-9_]+$)")
 		}
@@ -165,6 +173,7 @@ func (w Workspace) validate() error {
 		p := fmt.Sprintf("envApps[%d].", i)
 		need(labelOK(a.Key) && !strings.HasPrefix(a.Key, "env-"), fmt.Sprintf("%skey (DNS label of at most %d bytes, not starting with env-)", p, maxLabelLen))
 		need(!keys[a.Key], p+"key (duplicate)")
+		need(!slices.Contains(reservedAppKeys, a.Key), p+"key ("+strings.Join(reservedAppKeys, ", ")+" are app-of-apps values, not apps)")
 		keys[a.Key] = true
 		need(a.Phase == 1 || a.Phase == 2, p+"phase (1 or 2)")
 		need(a.Repo == "" || builds[a.Repo], p+"repo (must be a builds[].repo)")
@@ -173,10 +182,16 @@ func (w Workspace) validate() error {
 		need(len(a.Ingress) == 0 || a.Svc != "", p+"svc (ingress needs a host prefix)")
 		for j, in := range a.Ingress {
 			need(in.Values != "" && strings.HasPrefix(in.Path, "/"), fmt.Sprintf("%singress[%d].values/path (path starts with /)", p, j))
+			// image.tag is the kit's own key in the same values map
+			need(in.Values != "image" && !strings.HasPrefix(in.Values, "image."), fmt.Sprintf("%singress[%d].values (image is the kit's image.tag key)", p, j))
 		}
 		if a.Seed {
 			seeds++
+			need(a.Phase == 1, p+"phase (the seed app runs in phase 1, before the apps)")
+			need(a.Repo == "" && a.Svc == "" && len(a.Ingress) == 0, p+"seed (the seed app takes no repo, svc or ingress)")
 		}
+		// an app built by the kit starts after the seed, never with it
+		need(a.Repo == "" || a.Phase == 2, p+"phase (an app with repo runs in phase 2)")
 	}
 	need(seeds == 1, "envApps[].seed (exactly one app)")
 	need(w.Seed.Repo == "" || builds[w.Seed.Repo], "seed.repo (must be a builds[].repo)")

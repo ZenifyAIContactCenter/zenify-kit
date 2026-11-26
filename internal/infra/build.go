@@ -30,7 +30,6 @@ type BuildTarget struct {
 	Args       map[string]string // build args
 	Secrets    []string          // BuildKit secret ids; each is read from env key strings.ToUpper(id)
 	OptSecrets []string          // secret ids passed only when their env key is set; never required
-	EnvArgs    []string          // keys of Args that differ per env; they are baked into the image, so they enter its tag
 }
 
 // ImageTag is sha-<7>, plus -dirty-<8 hex of sha256(diff)> for a dirty worktree.
@@ -46,19 +45,21 @@ func ImageTag(sha string, dirtyDiff []byte) string {
 	return "sha-" + short + "-dirty-" + hex.EncodeToString(sum[:])[:8]
 }
 
-// VariantTag appends -v<8 hex of sha256 of the sorted k=v pairs of t.EnvArgs>
-// to tag, so the same commit built for another env gets its own image. A
-// target without EnvArgs keeps tag.
+// VariantTag appends -v<8 hex of sha256 over everything in infra.json that
+// shapes the image besides the commit: context, dockerfile, target and every
+// build arg (per-env ones resolved). Any change to them, or another env's
+// args, gives another tag, so an existing image is never reused for a
+// different build. A plain build (context ".", dockerfile "Dockerfile", no
+// target, no args) keeps tag.
 func VariantTag(tag string, t BuildTarget) string {
-	if len(t.EnvArgs) == 0 {
+	if t.Dir == "." && t.Dockerfile == "Dockerfile" && t.Target == "" && len(t.Args) == 0 {
 		return tag
 	}
-	pairs := make([]string, 0, len(t.EnvArgs))
-	for _, k := range t.EnvArgs {
-		pairs = append(pairs, k+"="+t.Args[k])
+	parts := []string{"context=" + t.Dir, "dockerfile=" + t.Dockerfile, "target=" + t.Target}
+	for _, k := range sortedKeys(t.Args) {
+		parts = append(parts, "arg:"+k+"="+t.Args[k])
 	}
-	sort.Strings(pairs)
-	sum := sha256.Sum256([]byte(strings.Join(pairs, "\n")))
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
 	return tag + "-v" + hex.EncodeToString(sum[:])[:8]
 }
 
@@ -79,7 +80,6 @@ func CoreTargets(w Workspace, ws, domain, slug string) ([]BuildTarget, error) {
 		}
 		for _, k := range sortedKeys(b.EnvArgs) {
 			t.Args[k] = envArgValue(b.EnvArgs[k], slug, domain)
-			t.EnvArgs = append(t.EnvArgs, k)
 		}
 		if _, err := os.Stat(filepath.Join(ws, "repos", t.Repo)); err != nil { //nolint:gosec // G703 -- t.Repo comes from the workspace's own infra.json, ws is the kit's workspace root
 			return nil, fmt.Errorf("build targets: repo %s: %w", t.Repo, err)

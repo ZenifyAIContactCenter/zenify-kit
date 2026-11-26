@@ -130,7 +130,7 @@ func TestInstallK3sChangedFileRestartsK3s(t *testing.T) {
 	if !changed {
 		t.Fatal("changed = false after writing registries.yaml")
 	}
-	if !r.ran("sudo tee " + registriesPath + ".zenify.tmp") {
+	if !r.ran("sudo tee " + registriesPath + ".zenify-") {
 		t.Fatalf("registries.yaml not written: %v", r.calls)
 	}
 	if !r.ran("sudo systemctl restart k3s") || !r.ran("kubectl --kubeconfig "+K3sKubeconfig+" get nodes") {
@@ -215,7 +215,7 @@ func TestInstallK3sStepErrorNamesStep(t *testing.T) {
 	delete(files, k3sConfigPath)
 	base := hostFiles(files, K3sVersion)
 	r := &fakeRunner{respond: func(c call) ([]byte, error) {
-		if c.name == "sudo" && c.args[0] == "tee" && c.args[1] == k3sConfigPath+".zenify.tmp" {
+		if c.name == "sudo" && c.args[0] == "tee" && strings.HasPrefix(c.args[1], k3sConfigPath+".zenify-") {
 			return nil, errors.New("disk full")
 		}
 		return base(c)

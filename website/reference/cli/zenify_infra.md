@@ -29,7 +29,7 @@ Binary của kit công khai nên không chứa repo, image hay tài khoản nào
 | Trường | Ý nghĩa |
 |---|---|
 | `helmRepoURL` | Repo git chứa `charts/local-platform`, `charts/app-of-apps` và `envs/`. |
-| `builds[]` | Image build theo thứ tự (image gốc trước image `FROM` nó): `repo`, `context`, `dockerfile`, `target` (tuỳ chọn), `image` (đường dẫn dưới registry nội bộ), `tag` (cố định, bỏ trống thì `sha-<commit>`), `args`, `envArgs` (build arg đổi theo env, giá trị là một biến `slug`, `domain`, `registry` hoặc `baseOnly` = `1` cho env `base`, `0` cho env khác; các arg này vào tag image), `secrets` (bắt buộc), `optionalSecrets` (chỉ truyền khi có). |
+| `builds[]` | Image build theo thứ tự (image gốc trước image `FROM` nó): `repo`, `context`, `dockerfile`, `target` (tuỳ chọn), `image` (đường dẫn dưới registry nội bộ), `tag` (cố định và được dùng lại nguyên trạng, nên đổi `args`/`context` thì phải đổi `tag`; bỏ trống thì `sha-<commit>-v<hash>` với hash gồm `context`, `dockerfile`, `target` và mọi build arg, nên sửa bất kỳ giá trị nào trong số đó đều build image mới), `args`, `envArgs` (build arg đổi theo env, giá trị là một biến `slug`, `domain`, `registry` hoặc `baseOnly` = `1` cho env `base`, `0` cho env khác; không dùng cùng `tag` cố định), `secrets` (bắt buộc), `optionalSecrets` (chỉ truyền khi có). |
 | `envApps[]` | Key app-of-apps của env theo thứ tự: `key` (không bắt đầu bằng `env-`), `phase` (`1` datastore và seed, `2` app), `repo` (build có `image.tag`), `svc` (tiền tố host), `ingress[]` (`values` là key values dạng chấm, `path` là đường dẫn URL), `seed: true` cho đúng một app nhận `slug`, `domain`, `seed.tag`. |
 | `seed` | `repo` (build image seed), `tenant`, `passwordHint` (chỗ ghi mật khẩu, không bao giờ là mật khẩu), `accounts[]` (`role`, `email`). |
 
@@ -37,6 +37,8 @@ File nằm trong store dùng chung của team nên kit kiểm mọi giá trị t
 
 - `helmRepoURL`: URL `https://github.com/<owner>/<repo>` không chứa thông tin đăng nhập (token `gh` của bạn được gửi tới repo này).
 - `builds[].repo`: khớp `^[a-z0-9][a-z0-9._-]*$`, không có `..`, không trùng; `context` và `dockerfile`: đường dẫn tương đối nằm trong repo; `image`: phần chữ thường `[a-z0-9]` nối bằng `.`, `_`, `-`, `/`; `tag`: khớp `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`; `secrets[]`, `optionalSecrets[]`: khớp `^[a-z0-9_]+$`.
+- `builds[].image` không trùng giữa hai build; `tag` cố định không đi cùng `envArgs`.
+- `envApps[]`: `key` không được là `env`, `environment`, `global`, `apps` (là values của app-of-apps); app `seed` ở `phase: 1` và không có `repo`, `svc`, `ingress`; app có `repo` ở `phase: 2` (chạy sau seed); `ingress[].values` không trỏ vào `image` (key `image.tag` của kit).
 - `envApps[].key` và `svc`: nhãn DNS (`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`) dài tối đa 30 byte, để `<svc>-<slug>` với slug dài nhất (32) vẫn ≤ 63; `key` không trùng và không bắt đầu bằng `env-`; `ingress[].path` bắt đầu bằng `/`.
 
 ## Ví dụ

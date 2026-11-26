@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"os/user"
@@ -154,5 +155,36 @@ func TestBaseSourceNoGlobalPrune(t *testing.T) {
 	}
 	if r := run(false, true); r.ran("git -C "+repo+" worktree remove") || !r.ran("git -C "+repo+" worktree add --detach "+dir) {
 		t.Fatalf("unlisted leftover: %v", r.calls)
+	}
+}
+
+// Business rule (review round 2): each root-file write uses its own temp
+// file, so two writers never truncate or move each other's content, and a
+// failed write leaves no temp behind.
+func TestWriteRootFileUniqueTempAndCleanup(t *testing.T) {
+	var tees []string
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "sudo" && c.args[0] == "tee" {
+			tees = append(tees, c.args[1])
+		}
+		return nil, nil
+	}}
+	for range 2 {
+		if err := writeRootFile(context.Background(), r, "/etc/x.conf", []byte("a")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(tees) != 2 || tees[0] == tees[1] || !strings.HasPrefix(tees[0], "/etc/x.conf.zenify-") {
+		t.Fatalf("temp names = %v", tees)
+	}
+	failing := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "sudo" && c.args[0] == "mv" {
+			return nil, errors.New("mv failed")
+		}
+		return nil, nil
+	}}
+	err := writeRootFile(context.Background(), failing, "/etc/x.conf", []byte("a"))
+	if err == nil || !failing.ran("sudo rm -f /etc/x.conf.zenify-") {
+		t.Fatalf("err=%v calls=%v: a failed write must remove its temp", err, failing.calls)
 	}
 }

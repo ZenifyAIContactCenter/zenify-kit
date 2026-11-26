@@ -363,8 +363,9 @@ func TestVariantTagSeparatesEnvs(t *testing.T) {
 	if !strings.HasPrefix(a1, "sha-abcdef1-v") || len(a1) != len("sha-abcdef1-v")+8 {
 		t.Fatalf("variant tag shape = %q", a1)
 	}
-	if got := VariantTag(base, beTarget(t)); got != base {
-		t.Fatalf("be has no per-env args, tag = %q, want %q", got, base)
+	plain := BuildTarget{Dir: ".", Dockerfile: "Dockerfile"}
+	if got := VariantTag(base, plain); got != base {
+		t.Fatalf("a plain build keeps the commit tag, got %q", got)
 	}
 }
 
@@ -408,5 +409,33 @@ func TestCoreTargetsWebBareHostsOnlyForBase(t *testing.T) {
 	flipped.Args["PREVIEW_BARE_HOSTS"] = "0"
 	if VariantTag("sha-abc1234", base) == VariantTag("sha-abc1234", flipped) {
 		t.Fatal("PREVIEW_BARE_HOSTS is not part of the image tag")
+	}
+}
+
+// Business rule (review round 2): any infra.json input that shapes the image
+// (a fixed arg such as BASE_TAG, the target, the dockerfile) enters the tag,
+// so editing it rebuilds instead of silently reusing the old image.
+func TestVariantTagCoversEveryBuildInput(t *testing.T) {
+	ws := fakeWorkspace(t)
+	base := ImageTag("abcdef1234", nil)
+	web := webTarget(t, ws, "devbox2.test", "base")
+	ref := VariantTag(base, web)
+	mods := map[string]func(*BuildTarget){
+		"fixed arg":  func(x *BuildTarget) { x.Args["BASE_TAG"] = "2.1" },
+		"new arg":    func(x *BuildTarget) { x.Args["EXTRA"] = "1" },
+		"target":     func(x *BuildTarget) { x.Target = "runtime" },
+		"dockerfile": func(x *BuildTarget) { x.Dockerfile = "Other.Dockerfile" },
+		"context":    func(x *BuildTarget) { x.Dir = "sub" },
+	}
+	for name, mod := range mods {
+		x := web
+		x.Args = map[string]string{}
+		for k, v := range web.Args {
+			x.Args[k] = v
+		}
+		mod(&x)
+		if VariantTag(base, x) == ref {
+			t.Errorf("%s change kept tag %q: the old image would be reused", name, ref)
+		}
 	}
 }

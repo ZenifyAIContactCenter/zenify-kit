@@ -44,6 +44,18 @@ func TestWorkspaceValidateRejectsUnsafeValues(t *testing.T) {
 		{"svc not a label", func(w *Workspace) { w.EnvApps[4].Svc = "be.x" }, "envApps[4].svc (DNS label of at most 30 bytes)"},
 		{"svc too long", func(w *Workspace) { w.EnvApps[4].Svc = long }, "envApps[4].svc"},
 		{"ingress path", func(w *Workspace) { w.EnvApps[4].Ingress[0].Path = "api" }, "envApps[4].ingress[0].values/path (path starts with /)"},
+		// round 2: a fixed tag is reused as is, so per-env args would serve another env's image
+		{"fixed tag with envArgs", func(w *Workspace) { w.Builds[3].Tag = "preview" }, "builds[3].tag (a fixed tag cannot be combined with envArgs)"},
+		{"image duplicate", func(w *Workspace) { w.Builds[2].Image = w.Builds[1].Image }, "builds[2].image (duplicate"},
+		// app-of-apps top-level values are not apps
+		{"key env", func(w *Workspace) { w.EnvApps[0].Key = "env" }, "envApps[0].key (env, environment, global, apps are app-of-apps values"},
+		{"key global", func(w *Workspace) { w.EnvApps[0].Key = "global" }, "envApps[0].key (env, environment"},
+		{"key apps", func(w *Workspace) { w.EnvApps[0].Key = "apps" }, "envApps[0].key (env, environment"},
+		// the seed runs before the apps
+		{"seed in phase 2", func(w *Workspace) { w.EnvApps[3].Phase = 2 }, "envApps[3].phase (the seed app runs in phase 1"},
+		{"seed with repo", func(w *Workspace) { w.EnvApps[3].Repo = "shop-api" }, "envApps[3].seed (the seed app takes no repo, svc or ingress)"},
+		{"ingress over image.tag", func(w *Workspace) { w.EnvApps[4].Ingress[0].Values = "image.tag" }, "envApps[4].ingress[0].values (image is the kit's image.tag key)"},
+		{"built app in phase 1", func(w *Workspace) { w.EnvApps[4].Phase = 1 }, "envApps[4].phase (an app with repo runs in phase 2)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
