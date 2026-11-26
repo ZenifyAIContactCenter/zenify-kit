@@ -17,10 +17,14 @@ import (
 type Requirements struct {
 	MinMemBytes  uint64
 	MinDiskBytes uint64
+	// MinDiskResumeBytes applies once k3s is installed: its images already use
+	// part of MinDiskBytes, so a re-run only needs room for new builds.
+	MinDiskResumeBytes uint64
 }
 
-// DefaultRequirements: 6 GiB RAM, 30 GiB free where /var/lib/rancher lives.
-var DefaultRequirements = Requirements{MinMemBytes: 6442450944, MinDiskBytes: 32212254720}
+// DefaultRequirements: 6 GiB RAM, 30 GiB free where /var/lib/rancher lives
+// for a fresh install, 10 GiB to re-run on an installed devbox.
+var DefaultRequirements = Requirements{MinMemBytes: 6442450944, MinDiskBytes: 32212254720, MinDiskResumeBytes: 10737418240}
 
 // Problem is one failed preflight check with how to fix it.
 type Problem struct {
@@ -86,13 +90,18 @@ func Preflight(h HostProbe, r Requirements, wantK3s string) []Problem {
 		add("memory", fmt.Sprintf("need %d bytes RAM, have %d", r.MinMemBytes, mem), "use a host with more memory")
 	}
 
+	ver, installed, k3sErr := h.InstalledK3sVersion()
+	minDisk := r.MinDiskBytes
+	if k3sErr == nil && installed {
+		minDisk = r.MinDiskResumeBytes
+	}
 	if free, err := h.DiskFreeBytes(rancherDir); err != nil {
 		add("disk", "cannot read free disk for "+rancherDir+": "+err.Error(), "check the filesystem is mounted")
-	} else if free < r.MinDiskBytes {
-		add("disk", fmt.Sprintf("need %d bytes free for %s, have %d", r.MinDiskBytes, rancherDir, free), "free disk space or grow the volume")
+	} else if free < minDisk {
+		add("disk", fmt.Sprintf("need %d bytes free for %s, have %d", minDisk, rancherDir, free), "free disk space or grow the volume")
 	}
 
-	if ver, installed, err := h.InstalledK3sVersion(); err != nil {
+	if err := k3sErr; err != nil {
 		add("k3s", "cannot probe installed k3s: "+err.Error(), "check the k3s binary runs: k3s --version")
 	} else if installed {
 		if ver != wantK3s {

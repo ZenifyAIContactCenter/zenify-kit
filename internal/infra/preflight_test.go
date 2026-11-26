@@ -75,6 +75,14 @@ func TestPreflight(t *testing.T) {
 		},
 		{name: "missing certutil", mod: func(p *fakeProbe) { p.cmds["certutil"] = false }, wantCheck: "tools", wantIn: []string{"libnss3-tools"}},
 		{name: "gh not logged in", mod: func(p *fakeProbe) { p.ghStatus = errors.New("exit 1: no accounts") }, wantCheck: "tools", wantIn: []string{"gh auth login", "no accounts"}},
+		// re-running up on an installed devbox must not demand the fresh-install 30 GiB its own images already use
+		{name: "installed devbox re-run with 26 GiB free", mod: func(p *fakeProbe) {
+			p.k3sInstall, p.k3sVer, p.servicelb, p.disk = true, testPin, true, 26135412736
+		}},
+		{name: "installed devbox below resume floor", mod: func(p *fakeProbe) {
+			p.k3sInstall, p.k3sVer, p.servicelb, p.disk = true, testPin, true, DefaultRequirements.MinDiskResumeBytes-1
+		}, wantCheck: "disk", wantIn: []string{"10737418240"}},
+		{name: "fresh host with 26 GiB free", mod: func(p *fakeProbe) { p.disk = 26135412736 }, wantCheck: "disk", wantIn: []string{"32212254720"}},
 		{name: "disk probe error", mod: func(p *fakeProbe) { p.diskE = errors.New("statfs boom") }, wantCheck: "disk", wantIn: []string{"statfs boom"}},
 		{name: "k3s probe error", mod: func(p *fakeProbe) { p.k3sErr = errors.New("exec format error") }, wantCheck: "k3s", wantIn: []string{"exec format error"}},
 		{name: "k3s config parse error", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer, p.cfgErr = true, testPin, errors.New("parse yaml: bad") }, wantCheck: "k3s", wantIn: []string{"parse yaml: bad"}},

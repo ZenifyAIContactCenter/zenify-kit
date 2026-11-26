@@ -9,6 +9,14 @@ spec:
       spec:
         type: ClusterIP
         clusterIP: {{ .TraefikClusterIP }}
+    # ClusterIP has no load-balancer status to publish; write the fixed IP into
+    # every Ingress status instead, or ArgoCD never sees an Ingress Healthy.
+    providers:
+      kubernetesIngress:
+        publishedService:
+          enabled: false
+    additionalArguments:
+      - "--providers.kubernetesingress.ingressendpoint.ip={{ .TraefikClusterIP }}"
     ports:
       web:
         http:

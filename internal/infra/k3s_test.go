@@ -380,3 +380,23 @@ func TestInstallK3sStuckCRDNamedError(t *testing.T) {
 		t.Fatalf("restarted a bootstrapping k3s or deleted a CRD: %v", r.calls)
 	}
 }
+
+// ArgoCD marks an Ingress Healthy only once its status has an address. The
+// Traefik Service is a ClusterIP with no load-balancer status to publish, so
+// Traefik must write its fixed IP into every Ingress, or every app sync stops
+// at its Ingress and the Deployments of later waves are never applied.
+func TestTraefikConfigPublishesFixedIngressIP(t *testing.T) {
+	out, err := hostFile{asset: "traefik-config.yaml.tmpl"}.render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	for _, want := range []string{
+		"--providers.kubernetesingress.ingressendpoint.ip=" + TraefikClusterIP,
+		"publishedService:\n          enabled: false",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("traefik-config missing %q:\n%s", want, s)
+		}
+	}
+}
