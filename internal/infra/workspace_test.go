@@ -16,6 +16,8 @@ func TestWorkspaceValidateRejectsUnsafeValues(t *testing.T) {
 		want string // substring of the error; "" = valid
 	}{
 		{"fixture is valid", func(*Workspace) {}, ""},
+		{"envApp repo outside builds is valid (scanned)", func(w *Workspace) { w.EnvApps[4].Repo = "scanned-svc" }, ""},
+		{"envApp repo traversal", func(w *Workspace) { w.EnvApps[4].Repo = "a..b" }, "envApps[4].repo"},
 		{"profile full is valid", func(w *Workspace) { w.EnvApps[4].Profiles = []string{"full"} }, ""},
 		{"profile unknown", func(w *Workspace) { w.EnvApps[4].Profiles = []string{"core", "huge"} }, `envApps[4].profiles "huge" (core or full)`},
 		// a dev must learn the seed login somewhere: the password itself or where it is documented

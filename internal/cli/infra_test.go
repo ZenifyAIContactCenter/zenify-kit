@@ -959,3 +959,33 @@ func TestInfraStatusShow_UseSavedProfile(t *testing.T) {
 		}
 	}
 }
+
+// An active app whose repo is neither a build nor scanned stops up before any
+// image is built; the same app outside the active profile is not checked.
+func TestInfraUp_AppRepoNeedsBuildOrScan(t *testing.T) {
+	orphan := func(t *testing.T, d *infraDeps, profiles []string) {
+		t.Helper()
+		d.spec = func(string) (infra.Workspace, error) {
+			w := testWorkspace(t)
+			w.EnvApps = append(w.EnvApps, infra.WorkspaceApp{Key: "orphan", Phase: 2, Repo: "no-such-repo", Svc: "orph", Profiles: profiles})
+			return w, nil
+		}
+	}
+	d, steps, _ := fakeInfra(t, true)
+	orphan(t, &d, nil)
+	_, _, err := runInfra(d, "up", "--local")
+	want := "envApps[orphan].repo no-such-repo: no Dockerfile at its base ref and not in builds[]"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	for _, s := range *steps {
+		if strings.HasPrefix(s, "build ") {
+			t.Errorf("an image was built before the check: %v", *steps)
+		}
+	}
+	d, _, _ = fakeInfra(t, true)
+	orphan(t, &d, []string{infra.ProfileFull})
+	if _, _, err := runInfra(d, "up", "--local", "--profile", "core"); err != nil {
+		t.Fatalf("out-of-profile app must not be checked: %v", err)
+	}
+}

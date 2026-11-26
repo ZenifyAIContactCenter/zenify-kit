@@ -522,6 +522,9 @@ func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspa
 		}
 		var err error
 		ts, err = d.scanTargets(ctx, d.runner, w, ws, domain, infra.BaseSlug, refs)
+		if err == nil {
+			err = checkAppRepos(w, ts)
+		}
 		return stepOutcome{detail: fmt.Sprintf("ready, %d image(s) to check", len(ts))}, err
 	}); err != nil {
 		return nil, nil, nil, err
@@ -576,6 +579,21 @@ func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspa
 	}
 	v.printLines(noDeployLines(w, rows, ts))
 	return images, failed, failedRepos, nil
+}
+
+// checkAppRepos fails when an app of w (the active profile) names a repo that
+// is neither a build nor a scanned target: nothing would build its image.
+func checkAppRepos(w infra.Workspace, ts []infra.BuildTarget) error {
+	built := map[string]bool{}
+	for _, t := range ts {
+		built[t.Repo] = true
+	}
+	for _, a := range w.EnvApps {
+		if a.Repo != "" && !built[a.Repo] {
+			return fmt.Errorf("envApps[%s].repo %s: no Dockerfile at its base ref and not in builds[]", a.Key, a.Repo)
+		}
+	}
+	return nil
 }
 
 // summaryLines is the table `image · OK|FAIL|SKIP · duration · reason`.

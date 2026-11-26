@@ -237,7 +237,8 @@ func (w Workspace) validate() error {
 			need(ValidProfile(pr), p+"profiles "+strconv.Quote(pr)+" ("+ProfileCore+" or "+ProfileFull+")")
 		}
 		need(a.Phase == 1 || a.Phase == 2, p+"phase (1 or 2)")
-		need(a.Repo == "" || builds[a.Repo], p+"repo (must be a builds[].repo)")
+		// a scanned repo has no builds[] entry: up checks the repo is built
+		need(a.Repo == "" || (repoNameRe.MatchString(a.Repo) && !strings.Contains(a.Repo, "..")), p+"repo (^[a-z0-9][a-z0-9._-]*$, no ..)")
 		need(a.Svc == "" || a.Repo != "", p+"repo (an app with svc needs an image)")
 		need(a.Svc == "" || labelOK(a.Svc), fmt.Sprintf("%ssvc (DNS label of at most %d bytes)", p, maxLabelLen))
 		need(len(a.Ingress) == 0 || a.Svc != "", p+"svc (ingress needs a host prefix)")
