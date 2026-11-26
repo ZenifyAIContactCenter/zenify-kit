@@ -7,7 +7,7 @@ Khi viết hoặc sửa code trong một app React Native (repo có dependency `
 
 ## Cách hoạt động
 
-1. Skill yêu cầu màu và kiểu chữ lấy từ một module theme, đặt tên token theo vai trò (`text.secondary`, `bg.subtle`) thay vì theo màu, để sau này thêm dark mode chỉ là thêm một bảng giá trị chứ không phải sửa từng màn.
+1. Skill yêu cầu màu và kiểu chữ lấy từ một module theme, đặt tên token theo vai trò (`text.secondary`, `bg.subtle`) thay vì theo màu, để sau này thêm dark mode chỉ là thêm một bảng giá trị chứ không phải sửa từng màn. Thang chữ lấy từ một chuẩn của nền tảng (Apple HIG hoặc Material 3), giữ nguyên tên vai trò của chuẩn đó và chép cỡ, chiều cao dòng, độ đậm từ bảng gốc — không tự đặt tên kiểu `sm`/`lg` vì dễ bị hiểu nhầm thành cỡ Tailwind.
 2. Skill hướng dẫn chuyển app cũ sang token mà không đổi giao diện: chỉ thay mã hex khớp chính xác một token, giữ hằng số cũ (đánh dấu deprecated) thay vì sửa giá trị, và coi mọi thay đổi giá trị là thay đổi thiết kế cần ảnh trước/sau. Chặn tái phát bằng luật lint và một script đếm mà PR chỉ được làm giảm.
 3. Skill phân biệt thay đổi chỉ JS (Metro tải lại, ship được qua OTA) với thay đổi native (module native, `Info.plist`, `AndroidManifest.xml`, thư viện có code native) — loại sau phải build lại cả hai nền tảng, không ship qua OTA được. Với thay đổi JS, build thử bundle để bắt lỗi import và alias mà type check không thấy.
 4. Skill nhắc một API native phải có ở cả iOS lẫn Android với cùng tên trường sự kiện, và callback có thể về trên luồng nền phải chuyển sang luồng chính trước khi chạm UI.

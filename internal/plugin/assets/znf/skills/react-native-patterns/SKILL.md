@@ -26,8 +26,16 @@ const styles = StyleSheet.create({
 - Name color tokens by **role** (`text.secondary`, `bg.subtle`, `status.danger`), not by hue. A
   raw palette (`gray[500]`) stays inside the theme module; a later dark mode is then a second value
   table, not a rewrite of every screen.
-- Keep a small type scale (size + weight presets) and route text through one text component that
-  takes a preset name. Arbitrary one-off sizes are what make a scale drift.
+- Take the type scale from a platform standard instead of inventing one: Apple HIG text styles
+  (iOS Dynamic Type at the default "Large" size: `largeTitle`, `title1`–`title3`, `headline`, `body`,
+  `callout`, `subhead`, `footnote`, `caption1`, `caption2`) or the Material 3 type scale
+  (`display`/`headline`/`title`/`body`/`label` × L/M/S). Keep the standard's **role names** and copy
+  size, line height and weight from its published table — cite the source in the theme file.
+- Do not name type steps `xs`/`sm`/`lg`/`xl`: those read as Tailwind sizes, and a team that also
+  ships a Tailwind web app will assume Tailwind values.
+- Route text through one text component that takes a style name. Arbitrary one-off sizes are what
+  make a scale drift; map an existing app's sizes onto the standard (exact matches first, as a
+  no-visual-change step; off-scale sizes to the nearest step as a separate, reviewed change).
 - `StyleSheet.create` at module level, not `style={{ … }}` inline: inline objects are recreated on
   every render and cannot be found by a token audit.
 - Migrating an existing app: replace only literals that **exactly** match a token (no visual
