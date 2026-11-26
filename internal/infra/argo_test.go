@@ -404,3 +404,31 @@ func TestSyncedRevision(t *testing.T) {
 		t.Error("OutOfSync app reported as synced")
 	}
 }
+
+// A refresh the controller is slow to confirm must not fail up (WaitApp still
+// guards health); a cancelled run still fails, worded as cancelled.
+func TestRefreshApps_SlowIsWarningCancelIsError(t *testing.T) {
+	oldP, oldW := pollInterval, refreshWait
+	pollInterval, refreshWait = time.Millisecond, 20*time.Millisecond
+	defer func() { pollInterval, refreshWait = oldP, oldW }()
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if strings.Contains(c.line(), "get applications") {
+			return []byte(`{"items":[{"metadata":{"name":"env-base","annotations":{"argocd.argoproj.io/refresh":"hard"}}}]}`), nil
+		}
+		return nil, nil
+	}}
+	p := &recProgress{}
+	if err := RefreshApps(WithProgress(context.Background(), p), r, []string{"env-base"}); err != nil {
+		t.Fatalf("timeout must continue, got %v", err)
+	}
+	if got := strings.Join(p.subs, "\n"); !strings.Contains(got, "refresh not confirmed within 20ms: env-base; continuing") {
+		t.Errorf("warning = %q", got)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(5 * time.Millisecond); cancel() }()
+	refreshWait = time.Minute
+	err := RefreshApps(ctx, r, []string{"env-base"})
+	if err == nil || !strings.Contains(err.Error(), "cancelled") || strings.Contains(err.Error(), "within") {
+		t.Errorf("cancel err = %v, want a cancelled error", err)
+	}
+}

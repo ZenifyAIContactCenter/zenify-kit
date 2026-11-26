@@ -280,7 +280,7 @@ func getApp(ctx context.Context, r Runner, name string) (appStatus, error) {
 const refreshAnnotation = "argocd.argoproj.io/refresh"
 
 // refreshWait bounds the wait for the controller to finish the refreshes.
-const refreshWait = 2 * time.Minute
+var refreshWait = 2 * time.Minute
 
 // RefreshApps hard-refreshes the Applications of names that exist (ArgoCD
 // otherwise keeps serving a cached helm commit) with one kubectl call, then
@@ -310,14 +310,28 @@ func RefreshApps(ctx context.Context, r Runner, names []string) error {
 	if _, err := kubectl(ctx, r, nil, append(args, refreshAnnotation+"=hard", "--overwrite")...); err != nil {
 		return fmt.Errorf("refresh applications %s: %w", strings.Join(todo, ", "), err)
 	}
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, refreshWait)
 	defer cancel()
+	var pending []string
+	// a slow refresh is only a warning (the WaitApp that follows guards health);
+	// a cancelled run is an error
+	slow := func() error {
+		if err := parent.Err(); err != nil {
+			return fmt.Errorf("refresh applications: cancelled: %w", err)
+		}
+		report(parent, "refresh not confirmed within %s: %s; continuing", refreshWait, strings.Join(pending, ", "))
+		return nil
+	}
 	for {
 		l, err := listApps(ctx, r)
 		if err != nil {
+			if ctx.Err() != nil {
+				return slow()
+			}
 			return fmt.Errorf("refresh applications: %w", err)
 		}
-		var pending []string
+		pending = pending[:0]
 		for _, it := range l.Items {
 			if _, ok := it.Metadata.Annotations[refreshAnnotation]; ok && slices.Contains(todo, it.Metadata.Name) {
 				pending = append(pending, it.Metadata.Name)
@@ -327,7 +341,7 @@ func RefreshApps(ctx context.Context, r Runner, names []string) error {
 			return nil
 		}
 		if err := sleepCtx(ctx, pollInterval); err != nil {
-			return fmt.Errorf("refresh applications: not finished within %s (%w): %s", refreshWait, err, strings.Join(pending, ", "))
+			return slow()
 		}
 	}
 }
