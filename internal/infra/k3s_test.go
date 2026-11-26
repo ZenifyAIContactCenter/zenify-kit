@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 type call struct {
@@ -82,6 +83,8 @@ func hostFiles(files map[string]string, k3sVersion string) func(call) ([]byte, e
 			return []byte(files[c.args[1]]), nil
 		case c.name == "kubectl" && len(c.args) > 2 && c.args[2] == "get" && c.args[3] == "nodes":
 			return []byte("True\n"), nil
+		case c.name == "kubectl" && len(c.args) > 3 && c.args[2] == "get" && c.args[3] == "crd":
+			return []byte("True"), nil
 		}
 		return nil, nil
 	}
@@ -274,5 +277,106 @@ func TestInstallK3sInactiveFirewallRestarts(t *testing.T) {
 	}
 	if !r.ran("sudo systemctl restart " + firewallUnit) {
 		t.Fatalf("firewall not restarted: %v", r.calls)
+	}
+}
+
+// index returns the position of the first call with the given line prefix at
+// or after from, or -1.
+func (f *fakeRunner) index(prefix string, from int) int {
+	for i := from; i < len(f.calls); i++ {
+		if strings.HasPrefix(f.calls[i].line(), prefix) {
+			return i
+		}
+	}
+	return -1
+}
+
+// Business rule: on a fresh host the installer's own start must read the final
+// config and run behind the firewall, and nothing may restart k3s while it is
+// still bootstrapping: a restart then left addons.k3s.cattle.io stuck at
+// Established=False and k3s crash-looping (fresh VM, 2026-11-26).
+func TestInstallK3sFreshInstallNoRestartWhileBootstrapping(t *testing.T) {
+	files := map[string]string{}
+	installed := ""
+	base := writable(files)
+	r := &fakeRunner{}
+	r.respond = func(c call) ([]byte, error) {
+		switch {
+		case c.name == "k3s" && len(c.args) == 1 && c.args[0] == "--version":
+			if installed == "" {
+				return nil, exec.ErrNotFound
+			}
+			return []byte("k3s version " + installed + " (abc)\n"), nil
+		case c.name == "sudo" && len(c.args) > 1 && c.args[0] == "env":
+			installed = K3sVersion
+			files[mirrorHostsPath] = desiredHostFiles(t)[mirrorHostsPath]
+		}
+		return base(c)
+	}
+	if _, err := InstallK3s(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	installer := r.index("sudo env INSTALL_K3S_VERSION="+K3sVersion, 0)
+	if installer < 0 {
+		t.Fatalf("installer not run: %v", r.calls)
+	}
+	for _, f := range k3sHostFiles() {
+		if w := r.index("sudo tee "+f.path+".zenify-", 0); w < 0 || w > installer {
+			t.Fatalf("%s not written before the installer: %v", f.path, r.calls)
+		}
+	}
+	if fw := r.index("sudo systemctl restart "+firewallUnit, 0); fw < 0 || fw > installer {
+		t.Fatalf("firewall not active before the installer: %v", r.calls)
+	}
+	if r.index("sudo systemctl restart", installer) >= 0 {
+		t.Fatalf("k3s restarted after its first start: %v", r.calls)
+	}
+	nodes := r.index("kubectl --kubeconfig "+K3sKubeconfig+" get nodes", installer)
+	for _, crd := range k3sCRDs {
+		if r.index("kubectl --kubeconfig "+K3sKubeconfig+" get crd "+crd, nodes) < 0 || nodes < 0 {
+			t.Fatalf("installer start not awaited (node Ready, CRD %s): %v", crd, r.calls)
+		}
+	}
+}
+
+// Business rule: a restart for a config change waits for the running k3s to
+// finish bootstrapping first (CRDs Established), then waits again after.
+func TestInstallK3sRestartWaitsForBootstrap(t *testing.T) {
+	files := desiredHostFiles(t)
+	delete(files, registriesPath)
+	r := &fakeRunner{respond: hostFiles(files, K3sVersion)}
+	if _, err := InstallK3s(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	restart := r.index("sudo systemctl restart k3s", 0)
+	before := r.index("kubectl --kubeconfig "+K3sKubeconfig+" get crd", 0)
+	after := r.index("kubectl --kubeconfig "+K3sKubeconfig+" get crd", restart)
+	if restart < 0 || before < 0 || before > restart || after < 0 {
+		t.Fatalf("restart=%d crd-before=%d crd-after=%d: %v", restart, before, after, r.calls)
+	}
+}
+
+// Business rule: a k3s CRD stuck at Established=False is named with its manual
+// recovery, and the kit never deletes a CRD itself.
+func TestInstallK3sStuckCRDNamedError(t *testing.T) {
+	oldPoll, oldCRD := pollInterval, crdEstablishedTimeout
+	pollInterval, crdEstablishedTimeout = time.Millisecond, 20*time.Millisecond
+	defer func() { pollInterval, crdEstablishedTimeout = oldPoll, oldCRD }()
+	files := desiredHostFiles(t)
+	files[restartMarker] = "k3s restart pending\n"
+	base := hostFiles(files, K3sVersion)
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "kubectl" && strings.Contains(c.line(), "get crd addons.k3s.cattle.io") {
+			return []byte("False"), nil
+		}
+		return base(c)
+	}}
+	_, err := InstallK3s(context.Background(), r)
+	if err == nil || !strings.Contains(err.Error(), "addons.k3s.cattle.io") ||
+		!strings.Contains(err.Error(), "delete crd addons.k3s.cattle.io") || !strings.Contains(err.Error(), "sudo systemctl restart k3s") {
+		t.Fatalf("err = %v", err)
+	}
+	if r.ran("sudo systemctl restart k3s") || r.ran("kubectl --kubeconfig "+K3sKubeconfig+" delete") {
+		t.Fatalf("restarted a bootstrapping k3s or deleted a CRD: %v", r.calls)
 	}
 }

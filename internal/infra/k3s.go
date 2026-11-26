@@ -102,13 +102,22 @@ func k3sHostFiles() []hostFile {
 	}
 }
 
-// nodeReadyTimeout bounds the wait for the node after a k3s restart.
+// nodeReadyTimeout bounds the wait for the node after a k3s start.
 var nodeReadyTimeout = 3 * time.Minute
 
+// crdEstablishedTimeout bounds the wait for the k3s CRDs once the node is Ready.
+var crdEstablishedTimeout = 2 * time.Minute
+
+// k3sCRDs are the CRDs k3s creates at start; a restart while one is still
+// being created can leave it at Established=False for good.
+var k3sCRDs = []string{"addons.k3s.cattle.io", "helmcharts.helm.cattle.io", "helmchartconfigs.helm.cattle.io"}
+
 // InstallK3s writes the k3s config, registry mirror, Traefik HelmChartConfig and
-// the API/kubelet firewall, runs the pinned k3s installer when k3s is not at the
-// pinned version, and restarts k3s when its config or registry mirror changed
-// or containerd has not loaded the mirror. A restart marker written before such
+// the API/kubelet firewall and starts the firewall, all before it runs the
+// pinned k3s installer (when k3s is not at the pinned version), so the start the
+// installer does reads them. It restarts k3s only when its config or registry
+// mirror changed or containerd has not loaded the mirror, and never before k3s
+// finished bootstrapping (see waitBootstrapped). A restart marker written before such
 // a change and removed only after the restart succeeded makes a run after a
 // failed restart retry it.
 func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
@@ -154,6 +163,10 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		fwDirty = fwDirty || f.apply == applyFirewall
 	}
 
+	ver, err := installedK3s(ctx, r)
+	if err != nil {
+		return changed, fmt.Errorf("install k3s: %w", err)
+	}
 	if !fwDirty {
 		// a failed restart in an earlier run leaves the unit inactive
 		if _, err := r.Run(ctx, nil, "sudo", "systemctl", "is-active", "--quiet", firewallUnit); err != nil {
@@ -165,6 +178,13 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 	}
 	if fwDirty {
 		changed = true
+		// k3s.service requires the firewall unit, so restarting it restarts k3s:
+		// never cut off a k3s that is still bootstrapping
+		if ver != "" {
+			if err := waitBootstrapped(ctx, r); err != nil {
+				return changed, fmt.Errorf("install k3s: before firewall restart: %w", err)
+			}
+		}
 		for _, args := range [][]string{
 			{"systemctl", "daemon-reload"},
 			{"systemctl", "enable", firewallUnit},
@@ -179,20 +199,13 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 				return changed, fmt.Errorf("install k3s: remove firewall marker: %w", err)
 			}
 		}
-		// k3s.service requires the firewall unit, so restarting it restarts k3s
-		if v, err := installedK3s(ctx, r); err != nil {
-			return changed, fmt.Errorf("install k3s: %w", err)
-		} else if v != "" {
-			if err := waitNodeReady(ctx, r); err != nil {
+		if ver != "" {
+			if err := waitBootstrapped(ctx, r); err != nil {
 				return changed, fmt.Errorf("install k3s: after firewall restart: %w", err)
 			}
 		}
 	}
 
-	ver, err := installedK3s(ctx, r)
-	if err != nil {
-		return changed, fmt.Errorf("install k3s: %w", err)
-	}
 	if ver != "" && !pending {
 		// files can match while k3s still runs an older config (e.g. written by
 		// a run whose restart never happened): check what containerd loaded
@@ -206,6 +219,9 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		return changed, nil
 	}
 	if ver != K3sVersion {
+		// every host file and the firewall are in place, so the start the
+		// installer does reads them; a restart right after would cut off the
+		// bootstrap (k3s leaves a CRD stuck at Established=False)
 		script, err := r.Run(ctx, nil, "curl", "-sfL", k3sInstaller)
 		if err != nil {
 			return changed, fmt.Errorf("install k3s: download installer: %w", err)
@@ -213,21 +229,35 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		if _, err := r.Run(ctx, bytes.NewReader(script), "sudo", "env", "INSTALL_K3S_VERSION="+K3sVersion, "sh", "-s", "-"); err != nil {
 			return true, fmt.Errorf("install k3s: run installer %s: %w", K3sVersion, err)
 		}
+		if err := waitBootstrapped(ctx, r); err != nil {
+			return true, fmt.Errorf("install k3s: %w", err)
+		}
+		loaded, err := mirrorLoaded(ctx, r)
+		if err != nil {
+			return true, fmt.Errorf("install k3s: %w", err)
+		}
+		pending = !loaded
 	}
-	// the installer skips the service restart when the binary and unit are
-	// unchanged, so config.yaml/registries.yaml changes need an explicit one
-	if _, err := r.Run(ctx, nil, "sudo", "systemctl", "restart", "k3s"); err != nil {
-		return true, fmt.Errorf("install k3s: restart k3s: %w", err)
-	}
-	if err := waitNodeReady(ctx, r); err != nil {
-		return true, fmt.Errorf("install k3s: %w", err)
-	}
-	loaded, err := mirrorLoaded(ctx, r)
-	if err != nil {
-		return true, fmt.Errorf("install k3s: %w", err)
-	}
-	if !loaded {
-		return true, fmt.Errorf("install k3s: k3s restarted but %s does not route %s to %s", mirrorHostsPath, RegistryHost, mirrorEndpoint())
+	if pending {
+		// the installer is not run at the pinned version, so a config.yaml or
+		// registries.yaml change needs an explicit restart, once k3s has
+		// finished bootstrapping
+		if err := waitBootstrapped(ctx, r); err != nil {
+			return true, fmt.Errorf("install k3s: before restart: %w", err)
+		}
+		if _, err := r.Run(ctx, nil, "sudo", "systemctl", "restart", "k3s"); err != nil {
+			return true, fmt.Errorf("install k3s: restart k3s: %w", err)
+		}
+		if err := waitBootstrapped(ctx, r); err != nil {
+			return true, fmt.Errorf("install k3s: %w", err)
+		}
+		loaded, err := mirrorLoaded(ctx, r)
+		if err != nil {
+			return true, fmt.Errorf("install k3s: %w", err)
+		}
+		if !loaded {
+			return true, fmt.Errorf("install k3s: k3s restarted but %s does not route %s to %s", mirrorHostsPath, RegistryHost, mirrorEndpoint())
+		}
 	}
 	if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", restartMarker); err != nil {
 		return true, fmt.Errorf("install k3s: remove restart marker: %w", err)
@@ -267,6 +297,47 @@ func waitNodeReady(ctx context.Context, r Runner) error {
 		}
 		if err := sleepCtx(ctx, pollInterval); err != nil {
 			return fmt.Errorf("wait node ready: not ready within %s (last: %s)", nodeReadyTimeout, last)
+		}
+	}
+}
+
+// waitBootstrapped waits until k3s finished starting: the API answers, every
+// node is Ready and the k3s CRDs are Established. Only then is a restart safe.
+func waitBootstrapped(ctx context.Context, r Runner) error {
+	if err := waitNodeReady(ctx, r); err != nil {
+		return err
+	}
+	return waitCRDsEstablished(ctx, r)
+}
+
+// waitCRDsEstablished polls the k3s CRDs; one that stays Established=False is
+// reported with its manual recovery (deleting a CRD is never done for the user).
+func waitCRDsEstablished(ctx context.Context, r Runner) error {
+	ctx, cancel := context.WithTimeout(ctx, crdEstablishedTimeout)
+	defer cancel()
+	for {
+		var stuck, last string
+		for _, name := range k3sCRDs {
+			out, err := kubectl(ctx, r, nil, "get", "crd", name, "-o",
+				`jsonpath={.status.conditions[?(@.type=="Established")].status}`)
+			if err != nil {
+				last = name + ": " + err.Error()
+				break
+			}
+			if st := strings.TrimSpace(string(out)); st != "True" {
+				stuck, last = name, name+" Established="+st
+				break
+			}
+		}
+		if last == "" {
+			return nil
+		}
+		if err := sleepCtx(ctx, pollInterval); err != nil {
+			if stuck != "" {
+				return fmt.Errorf("k3s CRD %s still not Established after %s; recover with: kubectl --kubeconfig %s delete crd %s && sudo systemctl restart k3s",
+					stuck, crdEstablishedTimeout, K3sKubeconfig, stuck)
+			}
+			return fmt.Errorf("wait k3s CRDs: not established within %s (last: %s)", crdEstablishedTimeout, last)
 		}
 	}
 }
