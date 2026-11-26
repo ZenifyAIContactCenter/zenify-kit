@@ -31,6 +31,9 @@ type Workspace struct {
 	Seed WorkspaceSeed `json:"seed"`
 	// Scan sets how workspace repos that are not in Builds are built.
 	Scan WorkspaceScan `json:"scan,omitempty"`
+	// outOfProfile are the env apps ForProfile removed from EnvApps: the
+	// app-of-apps map lists them, so a render must still disable them.
+	outOfProfile []WorkspaceApp
 }
 
 // WorkspaceScan configures the default build of a repo found by scanning
@@ -90,16 +93,20 @@ func (a WorkspaceApp) inProfile(p string) bool {
 	return len(a.Profiles) == 0 || slices.Contains(a.Profiles, p)
 }
 
-// ForProfile returns w with only the env apps of profile p: an app outside it
-// is gone, as if infra.json did not list it.
+// ForProfile returns w with only the env apps of profile p in EnvApps: for
+// waits, URLs and status an app outside it is gone. RenderEnvApp still lists it,
+// disabled, because the chart's map would otherwise deploy it.
 func (w Workspace) ForProfile(p string) Workspace {
 	apps := make([]WorkspaceApp, 0, len(w.EnvApps))
+	var out []WorkspaceApp
 	for _, a := range w.EnvApps {
 		if a.inProfile(p) {
 			apps = append(apps, a)
+		} else {
+			out = append(out, a)
 		}
 	}
-	w.EnvApps = apps
+	w.EnvApps, w.outOfProfile = apps, append(slices.Clone(w.outOfProfile), out...)
 	return w
 }
 

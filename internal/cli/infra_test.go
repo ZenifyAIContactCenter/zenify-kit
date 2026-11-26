@@ -893,8 +893,24 @@ func TestInfraUp_ProfileFiltersAppsAndIsSaved(t *testing.T) {
 			if st == nil || st.Profile != c.wantProfile {
 				t.Fatalf("saved state = %+v, want profile %s", st, c.wantProfile)
 			}
-			if got := strings.Contains(m, "shop-gateway"); got != c.wantGateway {
-				t.Errorf("phase 2 names shop-gateway = %v, want %v", got, c.wantGateway)
+			var app struct {
+				Spec struct {
+					Source struct {
+						Helm struct {
+							Values map[string]any `yaml:"valuesObject"`
+						} `yaml:"helm"`
+					} `yaml:"source"`
+				} `yaml:"spec"`
+			}
+			if err := yaml.Unmarshal([]byte(m), &app); err != nil {
+				t.Fatal(err)
+			}
+			gw, ok := app.Spec.Source.Helm.Values["shop-gateway"].(map[string]any)
+			if !ok {
+				t.Fatalf("shop-gateway missing from the values (the chart map would deploy it):\n%s", m)
+			}
+			if on := gw["enabled"] != false; on != c.wantGateway {
+				t.Errorf("shop-gateway enabled = %v, want %v: %v", on, c.wantGateway, gw)
 			}
 			if got := indexOf(steps, "wait shop-gateway-base-local") >= 0; got != c.wantGateway {
 				t.Errorf("waits for shop-gateway = %v, want %v: %v", got, c.wantGateway, steps)

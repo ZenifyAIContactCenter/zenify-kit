@@ -287,19 +287,25 @@ func TestForProfile_FiltersAppsAndRender(t *testing.T) {
 	if len(w.EnvApps) != 7 {
 		t.Errorf("ForProfile mutated the source: %d apps", len(w.EnvApps))
 	}
-	b, err := RenderEnvApp(core, "base", "zenify.test", "main", testImages, 2, nil, nil)
-	if err != nil {
-		t.Fatal(err)
+	vals := func(w Workspace) map[string]any {
+		b, err := RenderEnvApp(w, "base", "zenify.test", "main", testImages, 2, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a renderedApp
+		if err := yaml.Unmarshal(b, &a); err != nil {
+			t.Fatal(err)
+		}
+		return a.Spec.Source.Helm.ValuesObject
 	}
-	if strings.Contains(string(b), "shop-gateway") {
-		t.Errorf("core render still names shop-gateway:\n%s", b)
+	// the chart's map lists every app: an out-of-profile one must be disabled, tagless
+	cv := vals(core)
+	if dig(cv, "shop-gateway", "enabled") != false || dig(cv, "shop-gateway", "values") != nil {
+		t.Errorf("core shop-gateway = %v, want disabled without values", cv["shop-gateway"])
 	}
-	b, err = RenderEnvApp(full, "base", "zenify.test", "main", testImages, 2, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), "shop-gateway") {
-		t.Errorf("full render lacks shop-gateway:\n%s", b)
+	fv := vals(full)
+	if dig(fv, "shop-gateway", "enabled") == false || dig(fv, "shop-gateway", "values", "image", "tag") != "sha-gw00001" {
+		t.Errorf("full shop-gateway = %v, want enabled at sha-gw00001", fv["shop-gateway"])
 	}
 	for _, n := range ChildApps(core, "base", 2, nil) {
 		if n == ChildAppName("shop-gateway", "base") {

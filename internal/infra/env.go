@@ -191,6 +191,11 @@ func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]
 		}
 		vals[a.Key] = entry
 	}
+	// an app outside the active profile stays in the values, disabled: the
+	// chart's map lists it and renders every app not disabled
+	for _, a := range w.outOfProfile {
+		vals[a.Key] = map[string]any{"name": a.Key + "-" + slug, "namespace": EnvNamespace(slug), "enabled": false}
+	}
 	app := map[string]any{
 		"apiVersion": "argoproj.io/v1alpha1",
 		"kind":       "Application",
