@@ -44,7 +44,7 @@ func fakeInfra(t *testing.T, alreadyThere bool) (infraDeps, *[]string, *infraRun
 	r := &infraRunner{}
 	d := infraDeps{
 		home:      func() (string, error) { return home, nil },
-		workspace: func() (string, bool) { return "/ws", true },
+		workspace: func() (string, bool, error) { return "/ws", true, nil },
 		runner:    r,
 		builder:   r,
 		preflight: func(string) []infra.Problem { rec("preflight"); return nil },
@@ -351,7 +351,9 @@ func TestInfraUp_DriftStopsBeforeAnyChange(t *testing.T) {
 	}
 	_, _, err := runInfra(d, "up", "--local")
 	if exitcode.Code(err) == 0 || !strings.Contains(err.Error(), `"old.test"`) || !strings.Contains(err.Error(), `"quyentm.test"`) ||
-		!strings.Contains(err.Error(), "zenify infra config --local --domain") {
+		!strings.Contains(err.Error(), "zenify infra config --local --domain quyentm.test") ||
+		!strings.Contains(err.Error(), "zenify infra up --local --chart-ref feat/local") ||
+		strings.Contains(err.Error(), "config --local --domain quyentm.test (and pass --chart-ref") {
 		t.Fatalf("err = %v", err)
 	}
 	if indexOf(*steps, "k3s") >= 0 || indexOf(*steps, "platform") >= 0 {
@@ -517,5 +519,18 @@ func TestInfraShow_TextAndJSON(t *testing.T) {
 	}
 	if _, _, err := runInfra(d, "show", "--local", "--slug", "nope"); exitcode.Code(err) == 0 || !strings.Contains(err.Error(), "envs: base") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// An unreadable cwd must stop up with the cause, not look like "no workspace".
+func TestInfraUp_WorkspaceErrorSurfaces(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	d.workspace = func() (string, bool, error) { return "", false, errors.New("current directory: getwd: no such file") }
+	_, _, err := runInfra(d, "up", "--local")
+	if exitcode.Code(err) != exitcode.Fail || !strings.Contains(err.Error(), "workspace: current directory") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(*steps) != 0 {
+		t.Errorf("steps ran: %v", *steps)
 	}
 }

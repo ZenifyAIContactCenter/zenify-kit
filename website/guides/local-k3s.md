@@ -18,7 +18,7 @@ Kubeconfig admin của k3s (`/etc/rancher/k3s/k3s.yaml`) có quyền `0640`, ch�
 ## Dựng và kiểm tra
 
 ```bash
-zenify infra config --local --domain quyentm.test   # tuỳ chọn; mặc định zenify.test
+zenify infra config --local --domain devbox2.test   # tuỳ chọn; mặc định zenify.test
 zenify infra up --local
 zenify infra status --local
 zenify infra show --local
@@ -26,7 +26,7 @@ zenify infra show --local
 
 [`zenify infra show --local`](/reference/cli/zenify_infra_show) in URL, repo, image tag đang chạy của từng app và tài khoản seed (không in mật khẩu).
 
-`up` chạy lại được: bước đã xong in `unchanged`. Khi đã có platform, `up` giữ domain và chart ref đang chạy; muốn đổi thì đặt rõ bằng `zenify infra config --local --domain <x>.test` hoặc `--chart-ref <ref>`, nếu không lệnh dừng và báo khác biệt. Khi xong, lệnh in `https://web.<domain>` (env `base` không có slug trong host: `web.zenify.test`, `be.zenify.test`, `hub.zenify.test`; env khác là `<svc>-<slug>.<domain>`) và email, domain của tài khoản seed. Nếu URL không mở được, [`zenify infra status --local`](/reference/cli/zenify_infra_status) cho biết DNS có resolve không và CA đã được tin chưa.
+`up` chạy lại được: bước đã xong in `unchanged`. Khi đã có platform, `up` giữ domain và chart ref đang chạy; muốn đổi thì đặt rõ domain bằng `zenify infra config --local --domain <x>.test` hoặc chart ref bằng `zenify infra up --local --chart-ref <ref>`, nếu không lệnh dừng và báo khác biệt. Khi xong, lệnh in `https://web.<domain>` (env `base` không có slug trong host: `web.zenify.test`, `be.zenify.test`, `hub.zenify.test`; env khác là `<svc>-<slug>.<domain>`) và email, domain của tài khoản seed. Nếu URL không mở được, [`zenify infra status --local`](/reference/cli/zenify_infra_status) cho biết DNS có resolve không và CA đã được tin chưa.
 
 ## Gỡ
 

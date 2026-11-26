@@ -27,14 +27,14 @@ Không có cờ đặt giá trị, lệnh in `domain`, `maxEnvs`, `chartRef` hi�
 | Cờ | Ý nghĩa |
 |---|---|
 | `--local` | Bắt buộc: nhắm devbox k3s cục bộ. |
-| `--domain` | Domain của các env, ví dụ `quyentm.test`. |
+| `--domain` | Domain của các env, ví dụ `devbox2.test`. |
 | `--max-envs` | Số env tối đa trên devbox, tối thiểu 1. |
 
 ## Ví dụ
 
 ```bash
 zenify infra config --local
-zenify infra config --local --domain quyentm.test --max-envs 2
+zenify infra config --local --domain devbox2.test --max-envs 2
 ```
 
 ## Lệnh liên quan

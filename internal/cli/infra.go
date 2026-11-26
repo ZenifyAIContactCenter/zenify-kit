@@ -25,7 +25,7 @@ var (
 // infraDeps are the host boundaries `zenify infra` touches; tests replace them.
 type infraDeps struct {
 	home      func() (string, error)
-	workspace func() (string, bool)
+	workspace func() (string, bool, error)
 	runner    infra.Runner
 	builder   infra.BuildRunner
 	preflight func(ws string) []infra.Problem
@@ -62,10 +62,13 @@ type infraDeps struct {
 func defaultInfraDeps() infraDeps {
 	return infraDeps{
 		home: os.UserHomeDir,
-		workspace: func() (string, bool) {
-			cwd, _ := os.Getwd()
+		workspace: func() (string, bool, error) {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return "", false, fmt.Errorf("current directory: %w", err)
+			}
 			ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
-			return ws, ok
+			return ws, ok, nil
 		},
 		runner:  infra.ExecRunner(),
 		builder: infra.ExecBuildRunner(),
@@ -211,7 +214,7 @@ func (t infraTarget) drift() error {
 	if len(diffs) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%s; to keep the deployed platform run: zenify infra config --local --domain %s (and pass --chart-ref %s); to change it on purpose set the new value with zenify infra config --local --domain <x>.test or --chart-ref <ref>",
+	return fmt.Errorf("%s; to keep the deployed platform run: zenify infra config --local --domain %s and zenify infra up --local --chart-ref %s; to change it on purpose run zenify infra config --local --domain <x>.test or zenify infra up --local --chart-ref <ref>",
 		strings.Join(diffs, "; "), t.live.Domain, t.live.ChartRef)
 }
 
@@ -268,7 +271,10 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	if err != nil {
 		return failStep("config", err)
 	}
-	ws, ok := d.workspace()
+	ws, ok, err := d.workspace()
+	if err != nil {
+		return failStep("workspace", err)
+	}
 	if !ok {
 		return failStep("workspace", errors.New("no zenify workspace found (run zenify up first)"))
 	}
