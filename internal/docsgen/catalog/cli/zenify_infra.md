@@ -7,7 +7,7 @@ Khi bạn muốn chạy contact-center trên chính devbox Linux của mình: m�
 
 ## Kết quả
 
-`zenify infra up --local` cài hoặc tiếp tục cài, `zenify infra status --local` đọc trạng thái, `zenify infra down --local` gỡ (mặc định chỉ preview), `zenify infra config --local` xem hoặc đặt domain và số env tối đa. Mọi lệnh `kubectl` đều chạy với `--kubeconfig /etc/rancher/k3s/k3s.yaml`, không bao giờ dùng context mặc định của bạn.
+`zenify infra up --local` cài hoặc tiếp tục cài, `zenify infra status --local` đọc trạng thái, `zenify infra show --local` in URL, image tag và tài khoản seed của từng env, `zenify infra down --local` gỡ (mặc định chỉ preview), `zenify infra config --local` xem hoặc đặt domain và số env tối đa. Mọi lệnh `kubectl` đều chạy với `--kubeconfig /etc/rancher/k3s/k3s.yaml`, không bao giờ dùng context mặc định của bạn.
 
 ## Ví dụ
 

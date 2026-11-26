@@ -20,7 +20,10 @@ Thiếu điều kiện nào, [`zenify infra up --local`](/reference/cli/zenify_i
 zenify infra config --local --domain quyentm.test   # tuỳ chọn; mặc định <github login>.test
 zenify infra up --local
 zenify infra status --local
+zenify infra show --local
 ```
+
+[`zenify infra show --local`](/reference/cli/zenify_infra_show) in URL, repo, image tag đang chạy của từng app và tài khoản seed (không in mật khẩu).
 
 `up` chạy lại được: bước đã xong in `unchanged`. Khi đã có platform, `up` giữ domain và chart ref đang chạy; muốn đổi thì đặt rõ bằng `zenify infra config --local --domain <x>.test` hoặc `--chart-ref <ref>`, nếu không lệnh dừng và báo khác biệt. Khi xong, lệnh in `https://web-base.<domain>` và email, domain của tài khoản seed. Nếu URL không mở được, [`zenify infra status --local`](/reference/cli/zenify_infra_status) cho biết DNS có resolve không và CA đã được tin chưa.
 

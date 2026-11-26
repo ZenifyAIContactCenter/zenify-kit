@@ -20,7 +20,7 @@ Khi bạn muốn chạy contact-center trên chính devbox Linux của mình: m�
 
 ## Kết quả
 
-`zenify infra up --local` cài hoặc tiếp tục cài, `zenify infra status --local` đọc trạng thái, `zenify infra down --local` gỡ (mặc định chỉ preview), `zenify infra config --local` xem hoặc đặt domain và số env tối đa. Mọi lệnh `kubectl` đều chạy với `--kubeconfig /etc/rancher/k3s/k3s.yaml`, không bao giờ dùng context mặc định của bạn.
+`zenify infra up --local` cài hoặc tiếp tục cài, `zenify infra status --local` đọc trạng thái, `zenify infra show --local` in URL, image tag và tài khoản seed của từng env, `zenify infra down --local` gỡ (mặc định chỉ preview), `zenify infra config --local` xem hoặc đặt domain và số env tối đa. Mọi lệnh `kubectl` đều chạy với `--kubeconfig /etc/rancher/k3s/k3s.yaml`, không bao giờ dùng context mặc định của bạn.
 
 ## Ví dụ
 
@@ -34,6 +34,7 @@ zenify infra status --local --json
 - [zenify](./zenify): Binary dòng lệnh của ZenifyKit, chứa mọi lệnh workspace và plugin skill đi kèm.
 - [zenify infra config](./zenify_infra_config): Xem hoặc đặt domain và số env tối đa của devbox k3s cục bộ.
 - [zenify infra down](./zenify_infra_down): Gỡ các env và platform khỏi devbox k3s cục bộ; `--purge` gỡ luôn k3s, CA và DNS.
+- [zenify infra show](./zenify_infra_show): In thông tin để dùng env trên devbox k3s cục bộ: domain, file CA, URL, repo, image tag của từng app và tài khoản seed.
 - [zenify infra status](./zenify_infra_status): In trạng thái devbox k3s cục bộ: k3s, ArgoCD, platform, các env, DNS và CA.
 - [zenify infra up](./zenify_infra_up): Cài hoặc tiếp tục cài devbox k3s cục bộ tới env `base` chạy được, chạy lại an toàn.
 

@@ -271,7 +271,7 @@ func TestInfraStatus_JSONParses(t *testing.T) {
 // Every subcommand refuses to run without --local (exit 2): no remote target exists yet.
 func TestInfra_RequiresLocal(t *testing.T) {
 	d, _, _ := fakeInfra(t, true)
-	for _, sub := range []string{"up", "status", "down", "config"} {
+	for _, sub := range []string{"up", "status", "show", "down", "config"} {
 		_, _, err := runInfra(d, sub)
 		if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "only --local is supported") {
 			t.Errorf("%s: err = %v", sub, err)
@@ -482,5 +482,43 @@ func TestInfraDown_NothingInstalled(t *testing.T) {
 	out, _, err := runInfra(d, "down", "--local", "--apply")
 	if err != nil || !strings.Contains(out, "nothing to remove") || len(*steps) != 0 {
 		t.Fatalf("err=%v out=%q steps=%v", err, out, *steps)
+	}
+}
+
+// show passes --slug through, prints no password in either format, and still
+// shows domain, CA and accounts when no env exists yet.
+func TestInfraShow_TextAndJSON(t *testing.T) {
+	d, _, _ := fakeInfra(t, true)
+	d = withLive(d)
+	var gotDomain, gotSlug string
+	d.show = func(_ context.Context, _ infra.Runner, _, domain, slug string) (infra.ShowReport, error) {
+		gotDomain, gotSlug = domain, slug
+		return infra.ShowReport{Domain: domain, CA: "/h/.zenify/infra/ca.crt", Envs: []infra.ShowEnv{}, Accounts: infra.SeedAccounts}, nil
+	}
+	out, _, err := runInfra(d, "show", "--local", "--slug", "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotDomain != "quyentm.test" || gotSlug != "base" {
+		t.Errorf("show called with %s/%s", gotDomain, gotSlug)
+	}
+	for _, want := range []string{"domain    quyentm.test", "/h/.zenify/infra/ca.crt", "envs      none", "admin@zenifytest.vn", "agent-01@zenifytest.zenify.local", "see zenify-data-seed README"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("text missing %q:\n%s", want, out)
+		}
+	}
+	js, _, err := runInfra(d, "show", "--local", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(js), &m); err != nil || strings.Contains(strings.ToLower(js), "password") {
+		t.Fatalf("json err=%v or carries a password key:\n%s", err, js)
+	}
+	d.show = func(context.Context, infra.Runner, string, string, string) (infra.ShowReport, error) {
+		return infra.ShowReport{}, errors.New(`show: env "nope" not found (envs: base)`)
+	}
+	if _, _, err := runInfra(d, "show", "--local", "--slug", "nope"); exitcode.Code(err) == 0 || !strings.Contains(err.Error(), "envs: base") {
+		t.Fatalf("err = %v", err)
 	}
 }

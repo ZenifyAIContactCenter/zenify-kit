@@ -17,12 +17,6 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/infra"
 )
 
-// Seed account of an env (zenify-data-seed); its password is never printed.
-const (
-	seedLoginEmail  = "admin@zenifytest.vn"
-	seedLoginDomain = "zenifytest"
-)
-
 var (
 	platformTimeout = 15 * time.Minute
 	envTimeout      = 20 * time.Minute
@@ -54,6 +48,7 @@ type infraDeps struct {
 	livePlatform   func(ctx context.Context, r infra.Runner) (infra.PlatformTarget, bool, error)
 
 	status          func(ctx context.Context, r infra.Runner, home, domain string) (infra.Report, error)
+	show            func(ctx context.Context, r infra.Runner, home, domain, slug string) (infra.ShowReport, error)
 	removeTrust     func(ctx context.Context, r infra.Runner, home string) error
 	uninstallK3s    func(ctx context.Context, r infra.Runner) error
 	removeState     func(home string) error
@@ -93,6 +88,7 @@ func defaultInfraDeps() infraDeps {
 		appExists:       infra.AppExists,
 		saveState:       infra.SaveState,
 		status:          infra.Status,
+		show:            infra.Show,
 		removeTrust:     infra.RemoveTrustAndDNS,
 		uninstallK3s:    infra.UninstallK3s,
 		removeState:     infra.RemoveState,
@@ -115,7 +111,7 @@ func newInfraCmdWith(d infraDeps) *cobra.Command {
 		Short: "Devbox k3s cục bộ: cài k3s, ArgoCD, platform và env base", //znf:allow-lang
 		Args:  cobra.NoArgs,
 	}
-	cmd.AddCommand(d.upCmd(), d.statusCmd(), d.downCmd(), d.configCmd())
+	cmd.AddCommand(d.upCmd(), d.statusCmd(), d.showCmd(), d.downCmd(), d.configCmd())
 	return cmd
 }
 
@@ -358,7 +354,7 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 		return failStep("state", err)
 	}
 	fmt.Fprintf(out, "\nready: https://%s\n", infra.Host("web", slug, domain))
-	fmt.Fprintf(out, "seed login: email %s, domain %s\n", seedLoginEmail, seedLoginDomain)
+	fmt.Fprintf(out, "seed login: email %s, domain %s\n", infra.SeedAccounts[0].Email, infra.SeedTenant)
 	return nil
 }
 
@@ -440,7 +436,7 @@ func (d infraDeps) statusCmd() *cobra.Command {
 			}
 			rep, err := d.status(ctx, d.runner, home, tg.domain)
 			if err != nil {
-				return failStep("status", err)
+				return exitcode.New(exitcode.Fail, err) // already prefixed "status:"
 			}
 			out := cmd.OutOrStdout()
 			if asJSON {
@@ -460,6 +456,74 @@ func (d infraDeps) statusCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&local, "local", false, "target the local k3s devbox (required)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
+	return cmd
+}
+
+// seedPasswordHint is printed instead of any password.
+const seedPasswordHint = "password: see zenify-data-seed README (preview)"
+
+func (d infraDeps) showCmd() *cobra.Command {
+	var (
+		local, asJSON bool
+		slug          string
+	)
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "In URL, repo, image tag của từng env và tài khoản seed", //znf:allow-lang
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireLocal(local); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			home, cfg, err := d.loadConfig()
+			if err != nil {
+				return failStep("config", err)
+			}
+			tg, err := d.resolveTarget(ctx, home, cfg, "")
+			if err != nil {
+				return failStep("target", err)
+			}
+			rep, err := d.show(ctx, d.runner, home, tg.domain, slug)
+			if err != nil {
+				return exitcode.New(exitcode.Fail, err) // already prefixed "show:"
+			}
+			out := cmd.OutOrStdout()
+			if asJSON {
+				b, err := json.MarshalIndent(rep, "", "  ")
+				if err != nil {
+					return failStep("show", err)
+				}
+				fmt.Fprintln(out, string(b))
+				return nil
+			}
+			fmt.Fprintf(out, "domain    %s\nca        %s\n", rep.Domain, rep.CA)
+			if len(rep.Envs) == 0 {
+				fmt.Fprintln(out, "envs      none (run: zenify infra up --local)")
+			}
+			for _, e := range rep.Envs {
+				fmt.Fprintf(out, "env %s    %s/%s\n", e.Slug, e.Sync, e.Health)
+				for _, a := range e.Apps {
+					tag := a.Tag
+					if tag == "" {
+						tag = "-"
+					}
+					fmt.Fprintf(out, "  %-4s %-40s %-20s %s\n", a.Svc, a.URL, a.Repo, tag)
+				}
+			}
+			fmt.Fprintf(out, "accounts  tenant domain %s, %s\n", infra.SeedTenant, seedPasswordHint)
+			for _, a := range rep.Accounts {
+				fmt.Fprintf(out, "  %-14s %s\n", a.Role, a.Email)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&local, "local", false, "target the local k3s devbox (required)")
+	cmd.Flags().StringVar(&slug, "slug", "", "show only this env")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }

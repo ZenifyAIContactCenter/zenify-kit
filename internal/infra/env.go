@@ -16,12 +16,14 @@ const ProfileCore = "core"
 // envApps are the child apps of a core env, in phase order: phase 1 brings
 // the datastores and the seed up, phase 2 the apps (the seed runs --if-empty
 // and refuses once an app created its collections).
+// The app-of-apps key of an app is also its repo; svc is its host prefix.
 var envApps = []struct {
 	name  string
 	phase int
+	svc   string
 }{
-	{"mongo", 1}, {"mysql", 1}, {"redis", 1}, {"local-env", 1},
-	{"contact-center-be", 2}, {"contact-center-hub", 2}, {"contact-center-web", 2},
+	{"mongo", 1, ""}, {"mysql", 1, ""}, {"redis", 1, ""}, {"local-env", 1, ""},
+	{"contact-center-be", 2, "be"}, {"contact-center-hub", 2, "hub"}, {"contact-center-web", 2, "web"},
 }
 
 // SeedRepo is the repo whose image seeds an env's databases.
