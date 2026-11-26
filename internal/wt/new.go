@@ -375,6 +375,14 @@ func applyVariantCheckout(r gitx.Runner, path string, v Variant) error {
 		if _, err := r.Run(path, args...); err != nil {
 			return fmt.Errorf("wt: sparse-checkout failed: %w", err)
 		}
+		// A sparse variant that initialises no submodule leaves them unpopulated; with
+		// submodule.recurse=true in the repo config, `git fetch`/`pull` in this worktree then
+		// fails with "Could not access submodule". Turn recursion off for this worktree only.
+		if len(v.Submodules) == 0 {
+			if _, err := r.Run(path, "config", "--worktree", "submodule.recurse", "false"); err != nil {
+				return fmt.Errorf("wt: could not disable submodule.recurse: %w", err)
+			}
+		}
 	}
 	if len(v.Submodules) > 0 {
 		args := append([]string{"submodule", "update", "--init", "--"}, v.Submodules...)

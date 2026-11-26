@@ -48,7 +48,7 @@ Slug bắt đầu bằng `zen-<n>` hoặc `ops-<n>` (ví dụ `zen-123-login`, `
 
 ### Variant: chọn kiểu checkout
 
-Repo khai `variants` trong `.claude/worktree.json` thì `wt new` dựng worktree theo một variant. Repo app mobile, chẳng hạn, có thể khai bản `js` ẩn `android/` và `ios/` (tạo nhanh, đủ để sửa code JS) và bản `native` checkout đầy đủ, init submodule rồi chạy `pod install`. Không truyền `--variant` thì lệnh lấy `defaultVariant`; repo không khai gì thì checkout đầy đủ như trước. Phần ẩn đường dẫn chỉ áp dụng cho worktree đó, checkout chính giữ nguyên. Cú pháp các khoá xem ở [`zenify wt new`](/reference/cli/zenify_wt_new).
+Repo khai `variants` trong `.claude/worktree.json` thì `wt new` dựng worktree theo một variant. Repo app mobile, chẳng hạn, có thể khai bản `js` ẩn `android/` và `ios/` (tạo nhanh, đủ để sửa code JS) và bản `native` checkout đầy đủ, init submodule rồi chạy `pod install`. Không truyền `--variant` thì lệnh lấy `defaultVariant`; repo không khai gì thì checkout đầy đủ như trước. Phần ẩn đường dẫn chỉ áp dụng cho worktree đó, checkout chính giữ nguyên. Variant có ẩn đường dẫn mà không init submodule nào thì `wt new` đặt `submodule.recurse=false` riêng cho worktree đó: repo bật `submodule.recurse=true` (để pull tự cập nhật submodule ở checkout chính) vẫn `git fetch` được trong worktree mà không báo lỗi "Could not access submodule". Cú pháp các khoá xem ở [`zenify wt new`](/reference/cli/zenify_wt_new).
 
 ## Liên quan
 

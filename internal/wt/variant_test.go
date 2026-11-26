@@ -193,6 +193,39 @@ func TestRunNew_NativeVariantInitsSubmoduleAndRunsSetup(t *testing.T) {
 	}
 }
 
+// A sparse variant without submodules turns submodule.recurse off for its worktree only, so a repo
+// that sets submodule.recurse=true can still fetch there; a variant that inits submodules keeps it.
+func TestRunNew_SparseVariantDisablesSubmoduleRecurse(t *testing.T) {
+	root := variantRepo(t, `{"abbrev":"m","user":"namph","portRange":[3200,3249],"deps":"none",
+		"defaultVariant":"js","variants":{"js":{"sparseExclude":["android/","ios/","native/"]},
+		"native":{"submodules":["native/core"]}}}`, true)
+	gitT(t, root, "config", "submodule.recurse", "true")
+
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew js: %v\n%s", err, errb)
+	}
+	js := filepath.Join(root, ".worktrees", "my-task")
+	if got := strings.TrimSpace(gitT(t, js, "config", "--get", "submodule.recurse")); got != "false" {
+		t.Fatalf("js worktree submodule.recurse = %q, want false", got)
+	}
+	gitT(t, js, "fetch", "-q", "origin") // must not fail on the unpopulated submodule
+	if got := strings.TrimSpace(gitT(t, root, "config", "--get", "submodule.recurse")); got != "true" {
+		t.Fatalf("main checkout submodule.recurse = %q, want true (untouched)", got)
+	}
+
+	o2, errb2 := realOpts(root)
+	o2.Slug = "native-task"
+	o2.Variant = "native"
+	if err := RunNew(o2); err != nil {
+		t.Fatalf("RunNew native: %v\n%s", err, errb2)
+	}
+	native := filepath.Join(root, ".worktrees", "native-task")
+	if got := strings.TrimSpace(gitT(t, native, "config", "--get", "submodule.recurse")); got != "true" {
+		t.Fatalf("native worktree submodule.recurse = %q, want true (inherited)", got)
+	}
+}
+
 func TestRunNew_UnknownVariantFailsBeforeTouchingDisk(t *testing.T) {
 	root := variantRepo(t, `{"abbrev":"m","user":"namph","portRange":[3200,3249],"deps":"none",
 		"variants":{"js":{}}}`, false)
