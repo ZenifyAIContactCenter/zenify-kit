@@ -626,8 +626,31 @@ func TestInfraShow_TextAndJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	var m map[string]any
-	if err := json.Unmarshal([]byte(js), &m); err != nil || strings.Contains(strings.ToLower(js), "password") {
+	if err := json.Unmarshal([]byte(js), &m); err != nil || strings.Contains(strings.ToLower(js), "password") { // fake has no ArgoCD row
 		t.Fatalf("json err=%v or carries a password key:\n%s", err, js)
+	}
+	// cluster rows: the ArgoCD password is a command to run, OpenBao is left
+	// out when no Service exists
+	d.show = func(context.Context, infra.Runner, infra.Workspace, string, string, string) (infra.ShowReport, error) {
+		return infra.ShowReport{Domain: "devbox2.test", Cluster: infra.ShowCluster{
+			Kubeconfig: "/etc/rancher/k3s/k3s.yaml", Export: "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml", KubeconfigNote: "mode 0640",
+			Context: "default", Nodes: []infra.ShowNode{{Name: "devbox", Version: "v1"}},
+			Registry: infra.ShowRegistry{Alias: "reg.alias:5000", Address: "10.0.0.1:5000"},
+			ArgoCD:   &infra.ShowArgoCD{URL: "https://argocd-server.argocd.svc", PasswordCommand: "kubectl -n argocd get secret x"},
+		}}, nil
+	}
+	out, _, err = runInfra(d, "show", "--local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"export KUBECONFIG=/etc/rancher/k3s/k3s.yaml", "context     default", "node        devbox v1",
+		"reg.alias:5000 (pods pull), 10.0.0.1:5000 (host)", "argocd      https://argocd-server.argocd.svc", "admin password: kubectl -n argocd get secret x"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cluster text missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "openbao") {
+		t.Errorf("openbao row without a Service:\n%s", out)
 	}
 	d.show = func(context.Context, infra.Runner, infra.Workspace, string, string, string) (infra.ShowReport, error) {
 		return infra.ShowReport{}, errors.New(`show: env "nope" not found (envs: base)`)

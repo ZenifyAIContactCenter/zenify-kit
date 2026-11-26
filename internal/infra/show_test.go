@@ -57,7 +57,8 @@ func TestShow_URLsReposAndRunningTags(t *testing.T) {
 		}
 	}
 	for _, c := range r.calls {
-		if c.name == "kubectl" && (!strings.HasPrefix(c.line(), "kubectl --kubeconfig "+K3sKubeconfig) || !strings.Contains(c.line(), " get ")) {
+		if c.name == "kubectl" && (!strings.HasPrefix(c.line(), "kubectl --kubeconfig "+K3sKubeconfig) ||
+			(!strings.Contains(c.line(), " get ") && c.line() != "kubectl --kubeconfig "+K3sKubeconfig+" config current-context")) {
 			t.Errorf("show ran a non-read or non-local kubectl: %s", c.line())
 		}
 	}
@@ -77,12 +78,18 @@ func TestShow_JSONHasAccountsButNoPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := json.Marshal(rep)
+	noArgo := rep
+	noArgo.Cluster.ArgoCD = nil // carries the command that reads Argo's password, checked below
+	nb, err := json.Marshal(noArgo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(strings.ToLower(string(b)), "password") {
-		t.Fatalf("password in show JSON: %s", b)
+	if strings.Contains(strings.ToLower(string(nb)), "password") {
+		t.Fatalf("password in show JSON: %s", nb)
+	}
+	b, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
 	}
 	var got struct {
 		Domain   string `json:"domain"`
@@ -154,5 +161,67 @@ func TestEnvDomain_MissingFallsBack(t *testing.T) {
 	}
 	if got := rep.Envs[0].Apps[0].URL; got != "https://be.fallback.test" {
 		t.Fatalf("url = %s", got)
+	}
+}
+
+func clusterRunner(ingressHosts, openbao string) *fakeRunner {
+	base := showRunner()
+	return &fakeRunner{respond: func(c call) ([]byte, error) {
+		l := c.line()
+		switch {
+		case strings.HasSuffix(l, "config current-context"):
+			return []byte("default\n"), nil
+		case strings.Contains(l, "get nodes"):
+			return []byte("devbox " + K3sVersion + "\n"), nil
+		case strings.Contains(l, "get ingress"):
+			return []byte(ingressHosts), nil
+		case strings.Contains(l, "app.kubernetes.io/name=openbao"):
+			return []byte(openbao), nil
+		case strings.Contains(l, "secret"):
+			return []byte("planted-admin-secret"), nil
+		}
+		return base.respond(c)
+	}}
+}
+
+// A dev must be able to reach the cluster with their own kubectl, registry and
+// ArgoCD from show alone, but show must never read the ArgoCD admin secret
+// (it prints the command instead) and must not invent rows for absent parts.
+func TestShow_ClusterAccess(t *testing.T) {
+	r := clusterRunner("", "")
+	rep, err := Show(context.Background(), r, testWS(t), "/home/u", "devbox2.test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := rep.Cluster
+	if c.Kubeconfig != K3sKubeconfig || c.Export != "export KUBECONFIG="+K3sKubeconfig || !strings.Contains(c.KubeconfigNote, "group") {
+		t.Fatalf("kubeconfig rows = %+v", c)
+	}
+	if c.Context != "default" || len(c.Nodes) != 1 || c.Nodes[0] != (ShowNode{"devbox", K3sVersion}) {
+		t.Fatalf("context/nodes = %q %+v", c.Context, c.Nodes)
+	}
+	if c.Registry.Alias != RegistryHost || c.Registry.Address != RegistryClusterIP+":5000" {
+		t.Fatalf("registry = %+v", c.Registry)
+	}
+	if c.ArgoCD == nil || c.ArgoCD.URL != "https://argocd-server.argocd.svc" || c.ArgoCD.PasswordCommand != argoPasswordCommand || c.ArgoCD.IngressURL != "" {
+		t.Fatalf("argocd = %+v", c.ArgoCD)
+	}
+	if c.OpenBao != "" {
+		t.Fatalf("openbao row without a Service: %q", c.OpenBao)
+	}
+	b, _ := json.Marshal(rep)
+	if strings.Contains(string(b), "planted-admin-secret") || strings.Contains(string(b), `"openbao"`) || strings.Contains(string(b), "ingressUrl") {
+		t.Fatalf("show json = %s", b)
+	}
+	if r.ran("kubectl --kubeconfig "+K3sKubeconfig+" -n argocd get secret") {
+		t.Fatal("show read the ArgoCD admin secret")
+	}
+
+	rep, err = Show(context.Background(), clusterRunner("argocd.devbox2.test", "openbao openbao 8200\n"), testWS(t), "/home/u", "devbox2.test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Cluster.ArgoCD.IngressURL != "https://argocd.devbox2.test" || rep.Cluster.OpenBao != "http://openbao.openbao.svc:8200" {
+		t.Fatalf("ingress/openbao = %+v %q", rep.Cluster.ArgoCD, rep.Cluster.OpenBao)
 	}
 }

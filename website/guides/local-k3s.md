@@ -25,7 +25,7 @@ zenify infra status --local
 zenify infra show --local
 ```
 
-[`zenify infra show --local`](/reference/cli/zenify_infra_show) in URL, repo, image tag đang chạy của từng app và tài khoản seed (không in mật khẩu).
+[`zenify infra show --local`](/reference/cli/zenify_infra_show) in URL, repo, image tag đang chạy của từng app, tài khoản seed (không in mật khẩu) và cách vào cluster (kubeconfig, registry, ArgoCD). Dùng `kubectl`, xem log, ArgoCD và registry trên devbox: xem [Làm việc trên devbox k3s](/guides/local-k3s-dev).
 
 `up` chạy lại được: bước đã xong in `unchanged`. Khi đã có platform, `up` giữ domain và chart ref đang chạy; muốn đổi thì đặt rõ domain bằng `zenify infra config --local --domain <x>.test` hoặc chart ref bằng `zenify infra up --local --chart-ref <ref>`, nếu không lệnh dừng và báo khác biệt. Khi xong, lệnh in URL các app (env `base` không có slug trong host, ví dụ `web.zenify.test`; env khác là `<svc>-<slug>.<domain>`), email, tenant domain của tài khoản seed và chỗ ghi mật khẩu. Trước pha 1, lệnh đặt CA nội bộ vào ConfigMap `local-ca` (key `ca.crt`) của namespace env để pod tin HTTPS của env. Nếu URL không mở được, [`zenify infra status --local`](/reference/cli/zenify_infra_status) cho biết DNS có resolve không và CA đã được tin chưa.
 

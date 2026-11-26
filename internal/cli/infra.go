@@ -519,7 +519,7 @@ func (d infraDeps) showCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "show",
-		Short: "In URL, repo, image tag của từng env và tài khoản seed", //znf:allow-lang
+		Short: "In URL, image tag của từng env, tài khoản seed và cách vào cluster", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := requireLocal(local); err != nil {
@@ -576,6 +576,7 @@ func (d infraDeps) showCmd() *cobra.Command {
 			for _, a := range rep.Accounts {
 				fmt.Fprintf(out, "  %-14s %s\n", a.Role, a.Email)
 			}
+			printCluster(out, rep.Cluster)
 			return nil
 		},
 	}
@@ -583,6 +584,34 @@ func (d infraDeps) showCmd() *cobra.Command {
 	cmd.Flags().StringVar(&slug, "slug", "", "show only this env")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
+}
+
+// printCluster prints how to reach the cluster; rows for parts that are not
+// installed are left out.
+func printCluster(out io.Writer, c infra.ShowCluster) {
+	fmt.Fprintln(out, "cluster")
+	fmt.Fprintf(out, "  kubeconfig  %s (%s)\n", c.Kubeconfig, c.KubeconfigNote)
+	fmt.Fprintf(out, "              %s\n", c.Export)
+	if c.Context != "" {
+		fmt.Fprintf(out, "  context     %s\n", c.Context)
+	}
+	for _, n := range c.Nodes {
+		fmt.Fprintf(out, "  node        %s %s\n", n.Name, n.Version)
+	}
+	fmt.Fprintf(out, "  registry    %s (pods pull), %s (host)\n", c.Registry.Alias, c.Registry.Address)
+	fmt.Fprintf(out, "              push: %s\n", c.Registry.Push)
+	fmt.Fprintf(out, "              pull: %s\n", c.Registry.Pull)
+	fmt.Fprintf(out, "              list: %s\n", c.Registry.List)
+	if a := c.ArgoCD; a != nil {
+		fmt.Fprintf(out, "  argocd      %s (in-cluster)\n", a.URL)
+		if a.IngressURL != "" {
+			fmt.Fprintf(out, "              %s\n", a.IngressURL)
+		}
+		fmt.Fprintf(out, "              admin password: %s\n", a.PasswordCommand)
+	}
+	if c.OpenBao != "" {
+		fmt.Fprintf(out, "  openbao     %s\n", c.OpenBao)
+	}
 }
 
 func (d infraDeps) downCmd() *cobra.Command {

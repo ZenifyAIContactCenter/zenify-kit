@@ -53,7 +53,7 @@ zenify infra status --local --json
 - [zenify](./zenify): Binary dòng lệnh của ZenifyKit, chứa mọi lệnh workspace và plugin skill đi kèm.
 - [zenify infra config](./zenify_infra_config): Xem hoặc đặt domain và số env tối đa của devbox k3s cục bộ.
 - [zenify infra down](./zenify_infra_down): Gỡ các env và platform khỏi devbox k3s cục bộ; `--purge` gỡ luôn k3s, CA và DNS.
-- [zenify infra show](./zenify_infra_show): In thông tin để dùng env trên devbox k3s cục bộ: domain, file CA, URL, repo, image tag của từng app và tài khoản seed.
+- [zenify infra show](./zenify_infra_show): In thông tin để dùng env trên devbox k3s cục bộ: domain, file CA, URL, repo, image tag của từng app, tài khoản seed và cách vào cluster.
 - [zenify infra status](./zenify_infra_status): In trạng thái devbox k3s cục bộ: k3s, ArgoCD, platform, các env, DNS và CA.
 - [zenify infra up](./zenify_infra_up): Cài hoặc tiếp tục cài devbox k3s cục bộ tới env `base` chạy được, chạy lại an toàn.
 
