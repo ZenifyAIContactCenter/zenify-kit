@@ -29,6 +29,16 @@ type Workspace struct {
 	EnvApps []WorkspaceApp `json:"envApps"`
 	// Seed describes the seed data restored into every env.
 	Seed WorkspaceSeed `json:"seed"`
+	// Scan sets how workspace repos that are not in Builds are built.
+	Scan WorkspaceScan `json:"scan,omitempty"`
+}
+
+// WorkspaceScan configures the default build of a repo found by scanning
+// <workspace>/repos for a Dockerfile (context ".", file "Dockerfile", image <repo>).
+type WorkspaceScan struct {
+	Exclude         []string          `json:"exclude,omitempty"`         // repos never built by the scan
+	Args            map[string]string `json:"args,omitempty"`            // build args of every scanned image
+	OptionalSecrets []string          `json:"optionalSecrets,omitempty"` // secret ids passed only when set
 }
 
 // WorkspaceBuild is one image built from a repo's own Dockerfile.
@@ -169,6 +179,15 @@ func (w Workspace) validate() error {
 			need(slices.Contains(envArgVars, v), p+"envArgs."+arg+" (one of "+strings.Join(envArgVars, ", ")+")")
 		}
 		builds[b.Repo] = true
+	}
+	for _, n := range w.Scan.Exclude {
+		need(repoNameRe.MatchString(n) && !strings.Contains(n, ".."), "scan.exclude "+strconv.Quote(n)+" (^[a-z0-9][a-z0-9._-]*$, no ..)")
+	}
+	for _, id := range w.Scan.OptionalSecrets {
+		need(secretIDRe.MatchString(id), "scan.optionalSecrets "+strconv.Quote(id)+" (^[a-z0-9_]+$)")
+	}
+	for k := range w.Scan.Args {
+		need(k != "", "scan.args (empty key)")
 	}
 	seeds := 0
 	keys := map[string]bool{}

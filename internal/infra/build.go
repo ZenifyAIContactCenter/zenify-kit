@@ -90,6 +90,95 @@ func CoreTargets(w Workspace, ws, domain, slug string) ([]BuildTarget, error) {
 	return ts, nil
 }
 
+// ScanTargets returns CoreTargets, then one default target per directory of
+// <ws>/repos that is a git repo, is neither in builds[] nor in scan.exclude and
+// holds a Dockerfile at its base ref (refs[repo] overrides the baseRef of
+// .claude/worktree.json; with neither, origin's default branch), sorted by
+// name. The probe reads the ref after a fetch, never the working tree. A
+// directory whose name is not a valid repo name is skipped with a warning.
+func ScanTargets(ctx context.Context, r Runner, w Workspace, ws, domain, slug string, refs map[string]string) ([]BuildTarget, error) {
+	ts, err := CoreTargets(w, ws, domain, slug)
+	if err != nil {
+		return nil, err
+	}
+	skip := map[string]bool{}
+	for _, n := range w.Repos() {
+		skip[n] = true
+	}
+	for _, n := range w.Scan.Exclude {
+		skip[n] = true
+	}
+	entries, err := os.ReadDir(filepath.Join(ws, "repos"))
+	if err != nil {
+		return nil, fmt.Errorf("scan repos: %w", err)
+	}
+	for _, e := range entries { // ReadDir sorts by name
+		name := e.Name()
+		if !e.IsDir() || skip[name] {
+			continue
+		}
+		if !repoNameRe.MatchString(name) || strings.Contains(name, "..") {
+			report(ctx, "scan: skipping %q: not a valid repo name", name)
+			continue
+		}
+		root := filepath.Join(ws, "repos", name)
+		if _, err := os.Stat(filepath.Join(root, ".git")); errors.Is(err, os.ErrNotExist) { //nolint:gosec // G703 -- name matches repoNameRe
+			continue
+		} else if err != nil {
+			return nil, fmt.Errorf("scan %s: %w", name, err)
+		}
+		has, err := hasDockerfileAtBase(ctx, r, root, name, refs[name])
+		if err != nil {
+			return nil, err
+		}
+		if !has {
+			continue
+		}
+		args := map[string]string{}
+		for k, v := range w.Scan.Args {
+			args[k] = v
+		}
+		ts = append(ts, BuildTarget{Repo: name, Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/" + name,
+			Args: args, OptSecrets: w.Scan.OptionalSecrets})
+	}
+	return ts, nil
+}
+
+// hasDockerfileAtBase fetches the repo and reports whether <ref>:Dockerfile
+// exists. Only git's "path does not exist" answer means absent; any other
+// failure (bad ref, broken repo, fetch) is returned.
+func hasDockerfileAtBase(ctx context.Context, r Runner, root, repo, ref string) (bool, error) {
+	if ref == "" {
+		cfg, err := wt.Load(root)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case err != nil:
+			return false, fmt.Errorf("scan %s: %w", repo, err)
+		default:
+			ref = cfg.BaseRef
+		}
+	}
+	if strings.HasPrefix(ref, "-") {
+		return false, fmt.Errorf("scan %s: ref %q must not start with '-'", repo, ref)
+	}
+	if _, err := r.Run(ctx, nil, "git", "-C", root, "fetch", "origin"); err != nil {
+		return false, fmt.Errorf("scan %s: fetch: %w", repo, err)
+	}
+	if ref == "" {
+		var err error
+		if ref, err = remoteDefaultBranch(ctx, r, root); err != nil {
+			return false, fmt.Errorf("scan %s: no .claude/worktree.json baseRef and %w", repo, err)
+		}
+	}
+	if _, err := r.Run(ctx, nil, "git", "-C", root, "cat-file", "-e", ref+":Dockerfile"); err != nil {
+		if strings.Contains(err.Error(), "does not exist in") {
+			return false, nil
+		}
+		return false, fmt.Errorf("scan %s: probe %s:Dockerfile: %w", repo, ref, err)
+	}
+	return true, nil
+}
+
 // BuildResult reports one target of BuildFromBase.
 type BuildResult struct {
 	Image, Tag string

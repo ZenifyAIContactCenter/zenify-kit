@@ -527,3 +527,105 @@ func TestBaseSourceDefaultBranchFallback(t *testing.T) {
 		t.Fatalf("git ran despite a broken worktree.json: %v", r.calls)
 	}
 }
+
+// gitRepo makes <ws>/repos/<name> a git repo for the scan.
+func gitRepo(t *testing.T, ws, name string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(ws, "repos", name, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// dockerfileAt fakes git: repos in has hold a Dockerfile at their ref; every other git probe says it is absent.
+func dockerfileAt(has map[string]bool) func(call) ([]byte, error) {
+	return func(c call) ([]byte, error) {
+		if len(c.args) >= 4 && c.args[2] == "cat-file" {
+			repo := filepath.Base(c.args[1])
+			if has[repo] {
+				return nil, nil
+			}
+			return nil, errors.New("exit status 128: fatal: path 'Dockerfile' does not exist in '" + c.args[4] + "'")
+		}
+		return nil, nil
+	}
+}
+
+func TestScanTargets(t *testing.T) {
+	w := testWS(t)
+	w.Scan = WorkspaceScan{Exclude: []string{"c"}, Args: map[string]string{"NODE_ENV": "x"}, OptionalSecrets: []string{"npm_token"}}
+	ws := fakeWorkspace(t)
+	for _, n := range []string{"z", "a", "b", "c", "m", "Bad_Name"} {
+		if err := os.MkdirAll(filepath.Join(ws, "repos", n, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(ws, "repos", "notgit"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRunner{respond: dockerfileAt(map[string]bool{"a": true, "c": true, "z": true, "m": true, "Bad_Name": true, "notgit": true, "shop-api": true})}
+	refs := map[string]string{"a": "origin/main", "z": "origin/main", "m": "origin/main", "b": "origin/main", "c": "origin/main"}
+
+	core, err := CoreTargets(w, ws, "devbox2.test", "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ScanTargets(context.Background(), r, w, ws, "devbox2.test", "base", refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, x := range got {
+		names = append(names, x.Repo)
+	}
+	want := append(append([]string{}, w.Repos()...), "a", "m", "z")
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("targets = %v, want builds[] order then scanned by name: %v", names, want)
+	}
+	for i, c := range core {
+		if got[i].Image != c.Image || got[i].Dir != c.Dir {
+			t.Errorf("builds[] entry %s changed by the scan: %+v vs %+v", c.Repo, got[i], c)
+		}
+	}
+	a := got[len(core)]
+	if a.Dir != "." || a.Dockerfile != "Dockerfile" || a.Image != RegistryHost+"/a" || a.Args["NODE_ENV"] != "x" ||
+		len(a.OptSecrets) != 1 || a.OptSecrets[0] != "npm_token" || a.Tag != "" || a.Target != "" {
+		t.Fatalf("scanned default target = %+v", a)
+	}
+	if !r.ran("git -C " + filepath.Join(ws, "repos", "a") + " fetch origin") {
+		t.Fatal("no fetch before the Dockerfile probe: a stale ref would hide a new Dockerfile")
+	}
+}
+
+func TestScanTargetsReturnsGitFailure(t *testing.T) {
+	ws := fakeWorkspace(t)
+	gitRepo(t, ws, "a")
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.args[2] == "cat-file" {
+			return nil, errors.New("fatal: not a git repository")
+		}
+		return nil, nil
+	}}
+	_, err := ScanTargets(context.Background(), r, testWS(t), ws, "d.test", "base", map[string]string{"a": "origin/main"})
+	if err == nil || !strings.Contains(err.Error(), "a") || !strings.Contains(err.Error(), "not a git repository") {
+		t.Fatalf("git failure swallowed or unnamed: %v", err)
+	}
+}
+
+func TestScanTargetsRefFromWorktreeJSON(t *testing.T) {
+	ws := fakeWorkspace(t)
+	gitRepo(t, ws, "a")
+	dir := filepath.Join(ws, "repos", "a", ".claude")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "worktree.json"), []byte(`{"baseRef":"origin/staging"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRunner{respond: dockerfileAt(map[string]bool{"a": true})}
+	if _, err := ScanTargets(context.Background(), r, testWS(t), ws, "d.test", "base", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !r.ran("git -C " + filepath.Join(ws, "repos", "a") + " cat-file -e origin/staging:Dockerfile") {
+		t.Fatalf("probe did not use the worktree.json baseRef: %v", r.calls)
+	}
+}

@@ -58,6 +58,12 @@ func TestWorkspaceValidateRejectsUnsafeValues(t *testing.T) {
 		{"seed in phase 2", func(w *Workspace) { w.EnvApps[3].Phase = 2 }, "envApps[3].phase (the seed app runs in phase 1"},
 		{"seed with repo", func(w *Workspace) { w.EnvApps[3].Repo = "shop-api" }, "envApps[3].seed (the seed app takes no repo, svc or ingress)"},
 		{"ingress over image.tag", func(w *Workspace) { w.EnvApps[4].Ingress[0].Values = "image.tag" }, "envApps[4].ingress[0].values (image is the kit's image.tag key)"},
+		{"scan valid", func(w *Workspace) {
+			w.Scan = WorkspaceScan{Exclude: []string{"docs"}, Args: map[string]string{"K": "v"}, OptionalSecrets: []string{"npm_token"}}
+		}, ""},
+		{"scan exclude repo charset", func(w *Workspace) { w.Scan.Exclude = []string{"Bad/Repo"} }, `scan.exclude "Bad/Repo"`},
+		{"scan secret charset", func(w *Workspace) { w.Scan.OptionalSecrets = []string{"NPM-TOKEN"} }, `scan.optionalSecrets "NPM-TOKEN" (^[a-z0-9_]+$)`},
+		{"scan empty arg key", func(w *Workspace) { w.Scan.Args = map[string]string{"": "v"} }, "scan.args (empty key)"},
 		{"built app in phase 1", func(w *Workspace) { w.EnvApps[4].Phase = 1 }, "envApps[4].phase (an app with repo runs in phase 2)"},
 	}
 	for _, tc := range cases {
