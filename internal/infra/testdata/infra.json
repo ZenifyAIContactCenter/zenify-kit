@@ -1,5 +1,5 @@
 {
-  "helmRepoURL": "https://git.example.test/team/charts.git",
+  "helmRepoURL": "https://github.com/example-team/charts.git",
   "builds": [
     {"repo": "ui-base", "context": "stacks/ui", "dockerfile": "base.Dockerfile", "image": "team/base-ui", "tag": "2.0",
      "args": {"VERSION": "2.0"}},

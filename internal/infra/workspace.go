@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -98,6 +102,32 @@ func LoadWorkspace(path string) (Workspace, error) {
 	return w, nil
 }
 
+// infra.json lives in a team-shared store: every value is validated before it
+// reaches a token, a path or a command line.
+var (
+	repoNameRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+	imagePathRe = regexp.MustCompile(`^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$`)
+	imageTagRe  = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
+	secretIDRe  = regexp.MustCompile(`^[a-z0-9_]+$`)
+	dnsLabelRe  = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+)
+
+// maxSlugLen is the longest env slug slugRe allows; an app host label is
+// <svc>-<slug>, so svc (and key, for <key>-<slug>) gets 63-1-maxSlugLen bytes.
+const (
+	maxSlugLen  = 32
+	maxLabelLen = 63 - 1 - maxSlugLen
+)
+
+// helmRepoOK: the user's GitHub token is sent to this URL, so only an https
+// github.com URL without embedded credentials is accepted.
+func helmRepoOK(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Host == "github.com" && u.User == nil && u.Path != "" && u.Path != "/"
+}
+
+func labelOK(s string) bool { return len(s) <= maxLabelLen && dnsLabelRe.MatchString(s) }
+
 func (w Workspace) validate() error {
 	var miss []string
 	need := func(ok bool, field string) {
@@ -105,7 +135,7 @@ func (w Workspace) validate() error {
 			miss = append(miss, field)
 		}
 	}
-	need(w.HelmRepoURL != "", "helmRepoURL")
+	need(helmRepoOK(w.HelmRepoURL), "helmRepoURL (an https://github.com/<owner>/<repo> URL without credentials)")
 	need(len(w.Builds) > 0, "builds")
 	need(len(w.EnvApps) > 0, "envApps")
 	need(w.Seed.Repo != "", "seed.repo")
@@ -115,25 +145,34 @@ func (w Workspace) validate() error {
 	builds := map[string]bool{}
 	for i, b := range w.Builds {
 		p := fmt.Sprintf("builds[%d].", i)
-		need(b.Repo != "", p+"repo")
-		need(b.Context != "", p+"context")
-		need(b.Dockerfile != "", p+"dockerfile")
-		need(b.Image != "", p+"image")
+		need(repoNameRe.MatchString(b.Repo) && !strings.Contains(b.Repo, ".."), p+"repo (^[a-z0-9][a-z0-9._-]*$, no ..)")
+		need(!builds[b.Repo], p+"repo (duplicate)")
+		need(b.Context != "" && filepath.IsLocal(b.Context), p+"context (a relative path inside the repo)")
+		need(b.Dockerfile != "" && filepath.IsLocal(b.Dockerfile), p+"dockerfile (a relative path inside the context)")
+		need(imagePathRe.MatchString(b.Image), p+"image (registry path: lower-case [a-z0-9] parts joined by . _ - /)")
+		need(b.Tag == "" || imageTagRe.MatchString(b.Tag), p+"tag (^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$)")
+		for _, id := range append(slices.Clone(b.Secrets), b.OptionalSecrets...) {
+			need(secretIDRe.MatchString(id), p+"secrets/optionalSecrets "+strconv.Quote(id)+" (^[a-z0-9_]+$)")
+		}
 		for arg, v := range b.EnvArgs {
 			need(slices.Contains(envArgVars, v), p+"envArgs."+arg+" (one of "+strings.Join(envArgVars, ", ")+")")
 		}
 		builds[b.Repo] = true
 	}
 	seeds := 0
+	keys := map[string]bool{}
 	for i, a := range w.EnvApps {
 		p := fmt.Sprintf("envApps[%d].", i)
-		need(a.Key != "" && !strings.HasPrefix(a.Key, "env-"), p+"key (not starting with env-, the prefix of env root Applications)")
+		need(labelOK(a.Key) && !strings.HasPrefix(a.Key, "env-"), fmt.Sprintf("%skey (DNS label of at most %d bytes, not starting with env-)", p, maxLabelLen))
+		need(!keys[a.Key], p+"key (duplicate)")
+		keys[a.Key] = true
 		need(a.Phase == 1 || a.Phase == 2, p+"phase (1 or 2)")
 		need(a.Repo == "" || builds[a.Repo], p+"repo (must be a builds[].repo)")
 		need(a.Svc == "" || a.Repo != "", p+"repo (an app with svc needs an image)")
+		need(a.Svc == "" || labelOK(a.Svc), fmt.Sprintf("%ssvc (DNS label of at most %d bytes)", p, maxLabelLen))
 		need(len(a.Ingress) == 0 || a.Svc != "", p+"svc (ingress needs a host prefix)")
 		for j, in := range a.Ingress {
-			need(in.Values != "" && in.Path != "", fmt.Sprintf("%singress[%d].values/path", p, j))
+			need(in.Values != "" && strings.HasPrefix(in.Path, "/"), fmt.Sprintf("%singress[%d].values/path (path starts with /)", p, j))
 		}
 		if a.Seed {
 			seeds++

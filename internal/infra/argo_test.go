@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const testRepoURL = "https://git.example.test/team/charts.git"
+const testRepoURL = "https://github.com/example-team/charts.git"
 
 // Business rule: the GitHub token must never reach argv (visible in ps and error text).
 func TestSetRepoCredentialTokenOnlyOnStdin(t *testing.T) {

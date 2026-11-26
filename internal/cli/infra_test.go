@@ -76,7 +76,7 @@ func fakeInfra(t *testing.T, alreadyThere bool) (infraDeps, *[]string, *infraRun
 			return !alreadyThere, nil
 		},
 		setRepoCred: func(_ context.Context, _ infra.Runner, repoURL, tok string) error {
-			if tok != "tok-secret" || repoURL != "https://git.example.test/team/charts.git" {
+			if tok != "tok-secret" || repoURL != "https://github.com/example-team/charts.git" {
 				t.Errorf("token = %q, repo = %q", tok, repoURL)
 			}
 			rec("repo-credential")

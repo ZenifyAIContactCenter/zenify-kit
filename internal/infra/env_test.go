@@ -95,7 +95,7 @@ func TestRenderEnvApp_Phase2AppsNamesAndHosts(t *testing.T) {
 	a := render(t, 2)
 	vals := a.Spec.Source.Helm.ValuesObject
 	if a.Metadata.Name != "env-base" || a.Spec.Source.Path != "charts/app-of-apps" || a.Spec.Source.TargetRevision != "main" ||
-		a.Spec.Source.RepoURL != "https://git.example.test/team/charts.git" {
+		a.Spec.Source.RepoURL != "https://github.com/example-team/charts.git" {
 		t.Fatalf("root app = %s path %s rev %s repo %s", a.Metadata.Name, a.Spec.Source.Path, a.Spec.Source.TargetRevision, a.Spec.Source.RepoURL)
 	}
 	if len(a.Metadata.Finalizers) != 1 || a.Metadata.Finalizers[0] != "resources-finalizer.argocd.argoproj.io" {

@@ -33,6 +33,12 @@ Binary của kit công khai nên không chứa repo, image hay tài khoản nào
 | `envApps[]` | Key app-of-apps của env theo thứ tự: `key` (không bắt đầu bằng `env-`), `phase` (`1` datastore và seed, `2` app), `repo` (build có `image.tag`), `svc` (tiền tố host), `ingress[]` (`values` là key values dạng chấm, `path` là đường dẫn URL), `seed: true` cho đúng một app nhận `slug`, `domain`, `seed.tag`. |
 | `seed` | `repo` (build image seed), `tenant`, `passwordHint` (chỗ ghi mật khẩu, không bao giờ là mật khẩu), `accounts[]` (`role`, `email`). |
 
+File nằm trong store dùng chung của team nên kit kiểm mọi giá trị trước khi dùng, và liệt kê mọi trường sai cùng lúc, mỗi trường kèm luật:
+
+- `helmRepoURL`: URL `https://github.com/<owner>/<repo>` không chứa thông tin đăng nhập (token `gh` của bạn được gửi tới repo này).
+- `builds[].repo`: khớp `^[a-z0-9][a-z0-9._-]*$`, không có `..`, không trùng; `context` và `dockerfile`: đường dẫn tương đối nằm trong repo; `image`: phần chữ thường `[a-z0-9]` nối bằng `.`, `_`, `-`, `/`; `tag`: khớp `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`; `secrets[]`, `optionalSecrets[]`: khớp `^[a-z0-9_]+$`.
+- `envApps[].key` và `svc`: nhãn DNS (`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`) dài tối đa 30 byte, để `<svc>-<slug>` với slug dài nhất (32) vẫn ≤ 63; `key` không trùng và không bắt đầu bằng `env-`; `ingress[].path` bắt đầu bằng `/`.
+
 ## Ví dụ
 
 ```bash
