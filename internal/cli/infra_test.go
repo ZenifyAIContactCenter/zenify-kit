@@ -989,3 +989,28 @@ func TestInfraUp_AppRepoNeedsBuildOrScan(t *testing.T) {
 		t.Fatalf("out-of-profile app must not be checked: %v", err)
 	}
 }
+
+// The reason on a failed build line is the real cause (the npm 401), not
+// buildkit's last line that restates the whole RUN command; capped at 200.
+func TestBuildReason_PrefersTheRealError(t *testing.T) {
+	log := "buildctl: exit status 1: #9 RUN npm ci\n" +
+		"#9 0.9 npm error code E401\n" +
+		"#9 0.9 npm error 401 Unauthorized - GET https://npm.pkg.github.com/@acme%2fcore\n" +
+		"#9 ERROR: process \"/bin/sh -c export NPM_TOKEN=[redacted] && npm ci\" did not complete successfully\n" +
+		"error: failed to solve: process \"/bin/sh -c export NPM_TOKEN=[redacted] && npm ci\" did not complete successfully"
+	want := "#9 ERROR: process \"/bin/sh -c export NPM_TOKEN=[redacted] && npm ci\" did not complete successfully"
+	if got := buildReason(errors.New(log)); got != want {
+		t.Errorf("reason = %q, want the last ERROR: line", got)
+	}
+	noErr := strings.Join(strings.Split(log, "\n")[:3], "\n")
+	if got := buildReason(errors.New(noErr)); !strings.Contains(got, "npm error 401 Unauthorized") {
+		t.Errorf("reason = %q, want the 401 line", got)
+	}
+	if got := buildReason(errors.New("a\nplain last line")); got != "plain last line" {
+		t.Errorf("reason = %q, want the last line when nothing matches", got)
+	}
+	long := "npm error " + strings.Repeat("x", 400)
+	if got := buildReason(errors.New(long)); len([]rune(got)) != 200 || !strings.HasSuffix(got, "...") {
+		t.Errorf("reason len %d, want 200 ending in ...", len([]rune(got)))
+	}
+}

@@ -376,8 +376,9 @@ func tagExists(ctx context.Context, image, tag string) (bool, error) {
 
 // secretEnv resolves each secret id to KEY=value for buildctl's env: the
 // process env first, then the kit env store; npm_token falls back to
-// `gh auth token`. A missing required secret is an error naming its key; an
-// optional one that is unset is left out. used lists the ids to pass.
+// `gh auth token`, for an optional one too. A missing required secret is an error
+// naming its key; an optional one that is unset (and, for npm_token, whose gh
+// fallback failed, with a warning) is left out. used lists the ids to pass.
 func secretEnv(ctx context.Context, r Runner, ws string, ids, optional []string) (used, env, values []string, err error) {
 	if len(ids) == 0 && len(optional) == 0 {
 		return nil, nil, nil, nil
@@ -404,6 +405,15 @@ func secretEnv(ctx context.Context, r Runner, ws string, ids, optional []string)
 		v, err := lookup(key)
 		if err != nil {
 			return nil, nil, nil, err
+		}
+		if v == "" && id == "npm_token" {
+			out, err := r.Run(ctx, nil, "gh", "auth", "token")
+			if err != nil {
+				// optional: leave it out, but say why the build may lack the token
+				report(ctx, "warning: %s unset and gh auth token failed (%v); building without it", key, err)
+			} else {
+				v = strings.TrimSpace(string(out))
+			}
 		}
 		if v != "" {
 			used, env, values = append(used, id), append(env, key+"="+v), append(values, v)

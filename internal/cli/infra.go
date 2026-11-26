@@ -502,11 +502,26 @@ type buildRow struct {
 	dur                   time.Duration
 }
 
-// lastLine is the last non-empty line of an error text (the cause; build
-// errors have already been through secret redaction).
-func lastLine(err error) string {
+// maxReason caps the reason shown on a failed build's line.
+const maxReason = 200
+
+// buildReason is the most useful line of a failed build's error text: the last
+// npm error / `not found` / 401 / `ERROR:` line, else the last line (buildkit
+// ends with the whole RUN command). The text is already redacted.
+func buildReason(err error) string {
 	ls := strings.Split(strings.TrimSpace(err.Error()), "\n")
-	return strings.TrimSpace(ls[len(ls)-1])
+	pick := strings.TrimSpace(ls[len(ls)-1])
+	for i := len(ls) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(ls[i])
+		if strings.Contains(l, "npm error") || strings.Contains(l, "not found") || strings.Contains(l, "401") || strings.Contains(l, "ERROR:") {
+			pick = l
+			break
+		}
+	}
+	if r := []rune(pick); len(r) > maxReason {
+		pick = string(r[:maxReason-3]) + "..."
+	}
+	return pick
 }
 
 // buildImages scans the workspace for images and builds them in order, one
@@ -548,7 +563,7 @@ func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspa
 			res, err := d.build(ctx, d.builder, ws, t, refs)
 			if err != nil {
 				v.logf("%s: %v", names[i], err)
-				row.status, row.reason = "FAIL", lastLine(err)
+				row.status, row.reason = "FAIL", buildReason(err)
 				return stepOutcome{}, errors.New(row.reason)
 			}
 			images[t.Repo] = res.Tag

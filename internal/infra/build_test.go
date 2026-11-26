@@ -625,3 +625,50 @@ func TestScanTargetsRefFromWorktreeJSON(t *testing.T) {
 		t.Fatalf("probe did not use the worktree.json baseRef: %v", r.calls)
 	}
 }
+
+// ruling 2026-11-26: NPM_TOKEN always falls back to `gh auth token`, for an
+// optional (scanned repo) npm_token too; a failed fallback is reported, never silent.
+func TestBuildOptionalNpmTokenFallsBackToGh(t *testing.T) {
+	buildEnv(t, http.StatusNotFound)
+	t.Setenv("NPM_TOKEN", "")
+	tgt := beTarget(t)
+	tgt.Secrets, tgt.OptSecrets = nil, []string{"npm_token"}
+	ws := t.TempDir()
+
+	r := &fakeBuildRunner{fakeRunner: fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "gh" {
+			return []byte("gh-token-1\n"), nil
+		}
+		return nil, nil
+	}}}
+	if _, err := Build(context.Background(), r, ws, tgt, "sha-abcdef1"); err != nil {
+		t.Fatal(err)
+	}
+	if line := buildctlLine(t, r); !strings.Contains(line, "--secret id=npm_token,env=NPM_TOKEN") || strings.Contains(line, "gh-token-1") {
+		t.Fatalf("buildctl line = %s", line)
+	}
+	carried := false
+	for _, kv := range r.envs[len(r.envs)-1] {
+		carried = carried || kv == "NPM_TOKEN=gh-token-1"
+	}
+	if !carried {
+		t.Errorf("buildctl env lacks NPM_TOKEN from gh: %v", r.envs)
+	}
+
+	p := &recProgress{}
+	r = &fakeBuildRunner{fakeRunner: fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "gh" {
+			return nil, errors.New("not logged in")
+		}
+		return nil, nil
+	}}}
+	if _, err := Build(WithProgress(context.Background(), p), r, ws, tgt, "sha-abcdef1"); err != nil {
+		t.Fatalf("an optional secret must not fail the build: %v", err)
+	}
+	if line := buildctlLine(t, r); strings.Contains(line, "npm_token") {
+		t.Errorf("secret passed although gh failed: %s", line)
+	}
+	if len(p.subs) == 0 || !strings.Contains(strings.Join(p.subs, "\n"), "gh auth token failed") {
+		t.Errorf("no warning reported: %v", p.subs)
+	}
+}
