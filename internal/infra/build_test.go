@@ -536,15 +536,11 @@ func gitRepo(t *testing.T, ws, name string) {
 	}
 }
 
-// dockerfileAt fakes git: repos in has hold a Dockerfile at their ref; every other git probe says it is absent.
+// dockerfileAt fakes git: ls-tree lists Dockerfile for repos in has and prints nothing (exit 0) for the rest.
 func dockerfileAt(has map[string]bool) func(call) ([]byte, error) {
 	return func(c call) ([]byte, error) {
-		if len(c.args) >= 4 && c.args[2] == "cat-file" {
-			repo := filepath.Base(c.args[1])
-			if has[repo] {
-				return nil, nil
-			}
-			return nil, errors.New("exit status 128: fatal: path 'Dockerfile' does not exist in '" + c.args[4] + "'")
+		if len(c.args) >= 3 && c.args[2] == "ls-tree" && has[filepath.Base(c.args[1])] {
+			return []byte("Dockerfile\n"), nil
 		}
 		return nil, nil
 	}
@@ -600,7 +596,7 @@ func TestScanTargetsReturnsGitFailure(t *testing.T) {
 	ws := fakeWorkspace(t)
 	gitRepo(t, ws, "a")
 	r := &fakeRunner{respond: func(c call) ([]byte, error) {
-		if c.args[2] == "cat-file" {
+		if c.args[2] == "ls-tree" {
 			return nil, errors.New("fatal: not a git repository")
 		}
 		return nil, nil
@@ -625,7 +621,7 @@ func TestScanTargetsRefFromWorktreeJSON(t *testing.T) {
 	if _, err := ScanTargets(context.Background(), r, testWS(t), ws, "d.test", "base", nil); err != nil {
 		t.Fatal(err)
 	}
-	if !r.ran("git -C " + filepath.Join(ws, "repos", "a") + " cat-file -e origin/staging:Dockerfile") {
+	if !r.ran("git -C " + filepath.Join(ws, "repos", "a") + " ls-tree --name-only origin/staging -- Dockerfile") {
 		t.Fatalf("probe did not use the worktree.json baseRef: %v", r.calls)
 	}
 }

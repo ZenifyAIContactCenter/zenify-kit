@@ -145,8 +145,8 @@ func ScanTargets(ctx context.Context, r Runner, w Workspace, ws, domain, slug st
 }
 
 // hasDockerfileAtBase fetches the repo and reports whether <ref>:Dockerfile
-// exists. Only git's "path does not exist" answer means absent; any other
-// failure (bad ref, broken repo, fetch) is returned.
+// exists, by `git ls-tree` (exit 0 with empty output = absent, so no locale
+// dependence). Any git failure (bad ref, broken repo, fetch) is returned.
 func hasDockerfileAtBase(ctx context.Context, r Runner, root, repo, ref string) (bool, error) {
 	if ref == "" {
 		cfg, err := wt.Load(root)
@@ -170,13 +170,11 @@ func hasDockerfileAtBase(ctx context.Context, r Runner, root, repo, ref string) 
 			return false, fmt.Errorf("scan %s: no .claude/worktree.json baseRef and %w", repo, err)
 		}
 	}
-	if _, err := r.Run(ctx, nil, "git", "-C", root, "cat-file", "-e", ref+":Dockerfile"); err != nil {
-		if strings.Contains(err.Error(), "does not exist in") {
-			return false, nil
-		}
+	out, err := r.Run(ctx, nil, "git", "-C", root, "ls-tree", "--name-only", ref, "--", "Dockerfile")
+	if err != nil {
 		return false, fmt.Errorf("scan %s: probe %s:Dockerfile: %w", repo, ref, err)
 	}
-	return true, nil
+	return strings.TrimSpace(string(out)) == "Dockerfile", nil
 }
 
 // BuildResult reports one target of BuildFromBase.
