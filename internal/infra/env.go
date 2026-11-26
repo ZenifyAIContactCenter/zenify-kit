@@ -44,16 +44,46 @@ func PhaseTwoApps(w Workspace, slug string) []string {
 	return out
 }
 
-// SkippedApps are the phase-2 app keys whose build repo has no tag in images,
-// in envApps order: they are left out of the env rather than deployed broken.
-func SkippedApps(w Workspace, images map[string]string) []string {
+// SkippedApps are the phase-2 app keys whose build repo is in failed (a build
+// target whose build failed), in envApps order. A repo that is no build target
+// is not here: rendering it stays a config error.
+func SkippedApps(w Workspace, failed map[string]bool) []string {
 	var out []string
 	for _, a := range w.EnvApps {
-		if a.Phase == 2 && a.Repo != "" && images[a.Repo] == "" {
+		if a.Phase == 2 && a.Repo != "" && failed[a.Repo] {
 			out = append(out, a.Key)
 		}
 	}
 	return out
+}
+
+// DeployedTags returns, for the phase-2 apps of env slug that already have a
+// child Application with an image.tag, key -> that tag. An unreadable tag is an
+// error, never a missing one.
+func DeployedTags(ctx context.Context, r Runner, w Workspace, slug string) (map[string]string, error) {
+	apps, err := listApps(ctx, r)
+	if err != nil {
+		return nil, fmt.Errorf("deployed tags: %w", err)
+	}
+	byName := map[string]appStatus{}
+	for _, it := range apps.Items {
+		byName[it.Metadata.Name] = it.appStatus
+	}
+	out := map[string]string{}
+	for _, a := range w.EnvApps {
+		if a.Phase != 2 || a.Repo == "" {
+			continue
+		}
+		name := ChildAppName(a.Key, slug)
+		tag, err := byName[name].imageTag()
+		if err != nil {
+			return nil, fmt.Errorf("deployed tags: application %s: %w", name, err)
+		}
+		if tag != "" {
+			out[a.Key] = tag
+		}
+	}
+	return out, nil
 }
 
 // EnvURLs are the browser URLs of env slug, one per app with a host prefix.
@@ -93,7 +123,7 @@ func setDotted(m map[string]any, key string, v any) error {
 // appValues returns the values the kit owns for app a: for the seed app its
 // slug, domain and seed.tag; for an app with an image its image.tag and the
 // ingress hosts lists; nothing for a datastore.
-func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[string]string) (map[string]any, error) {
+func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[string]string, kept map[string]string) (map[string]any, error) {
 	if a.Seed {
 		tag := images[w.Seed.Repo]
 		if tag == "" {
@@ -105,6 +135,9 @@ func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[stri
 		return nil, nil
 	}
 	tag := images[a.Repo]
+	if t, ok := kept[a.Key]; ok {
+		tag = t
+	}
 	if tag == "" {
 		return nil, fmt.Errorf("no image tag for %s", a.Repo)
 	}
@@ -124,8 +157,9 @@ func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[stri
 // RenderEnvApp renders the root Application env-<slug> (charts/app-of-apps
 // over envs/local/map.yaml). images maps a build repo to its image tag. Phase 1
 // enables only the phase-1 apps (datastores and the seed); phase 2 all except
-// the app keys in skip, which are disabled like a later phase's.
-func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]string, phase int, skip map[string]bool) ([]byte, error) {
+// the app keys in skip, which are disabled like a later phase's; kept maps an
+// // app key to the tag it keeps running instead of images[repo].
+func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]string, phase int, skip map[string]bool, kept map[string]string) ([]byte, error) {
 	if phase != 1 && phase != 2 {
 		return nil, fmt.Errorf("env app: phase %d, want 1 or 2", phase)
 	}
@@ -147,7 +181,7 @@ func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]
 		if a.Phase > phase || skip[a.Key] {
 			entry["enabled"] = false
 		} else {
-			v, err := appValues(w, a, slug, domain, images)
+			v, err := appValues(w, a, slug, domain, images, kept)
 			if err != nil {
 				return nil, fmt.Errorf("env app: %w", err)
 			}

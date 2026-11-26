@@ -44,7 +44,7 @@ type renderedApp struct {
 
 func render(t *testing.T, phase int) renderedApp {
 	t.Helper()
-	b, err := RenderEnvApp(testWS(t), "base", "zenify.test", "main", testImages, phase, nil)
+	b, err := RenderEnvApp(testWS(t), "base", "zenify.test", "main", testImages, phase, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,13 +145,13 @@ func TestRenderEnvApp_Phase2AppsNamesAndHosts(t *testing.T) {
 // A missing image tag would deploy an app with no image: refuse to render.
 func TestRenderEnvApp_RejectsMissingTagAndBadInput(t *testing.T) {
 	w := testWS(t)
-	if _, err := RenderEnvApp(w, "base", "zenify.test", "main", map[string]string{"demo-seed": "x"}, 2, nil); err == nil {
+	if _, err := RenderEnvApp(w, "base", "zenify.test", "main", map[string]string{"demo-seed": "x"}, 2, nil, nil); err == nil {
 		t.Fatal("phase 2 without app tags must fail")
 	}
-	if _, err := RenderEnvApp(w, "Bad_Slug", "zenify.test", "main", testImages, 2, nil); err == nil {
+	if _, err := RenderEnvApp(w, "Bad_Slug", "zenify.test", "main", testImages, 2, nil, nil); err == nil {
 		t.Fatal("invalid slug must fail")
 	}
-	if _, err := RenderEnvApp(w, "base", strings.Repeat("a", 64)+".test", "main", testImages, 2, nil); err == nil {
+	if _, err := RenderEnvApp(w, "base", strings.Repeat("a", 64)+".test", "main", testImages, 2, nil, nil); err == nil {
 		t.Fatal("a 64-byte label must fail")
 	}
 }
@@ -215,30 +215,43 @@ func TestApply_ChangedFromKubectlOutput(t *testing.T) {
 }
 
 // An app whose image failed is disabled in phase 2 with no values (SC-29),
-// and has no child Application to wait for.
-func TestRenderEnvApp_SkipDisablesApp(t *testing.T) {
+// and has no child Application to wait for; one that keeps its deployed tag
+// stays enabled with it. A repo that is no build target is no skip.
+func TestRenderEnvApp_SkipAndKeep(t *testing.T) {
 	w := testWS(t)
-	images := map[string]string{"demo-seed": "x", "shop-api": "a", "shop-web": "c"} // no shop-gateway
-	skip := map[string]bool{"shop-gateway": true}
-	if got := SkippedApps(w, images); len(got) != 1 || got[0] != "shop-gateway" {
+	images := map[string]string{"demo-seed": "x", "shop-api": "a", "shop-web": "c"} // shop-gateway failed
+	if got := SkippedApps(w, map[string]bool{"shop-gateway": true}); len(got) != 1 || got[0] != "shop-gateway" {
 		t.Fatalf("SkippedApps = %v, want [shop-gateway]", got)
 	}
-	b, err := RenderEnvApp(w, "base", "zenify.test", "main", images, 2, skip)
-	if err != nil {
-		t.Fatal(err)
+	if got := SkippedApps(w, map[string]bool{}); len(got) != 0 {
+		t.Errorf("SkippedApps without a failed build = %v, want none", got)
 	}
-	var a renderedApp
-	if err := yaml.Unmarshal(b, &a); err != nil {
-		t.Fatal(err)
+	render2 := func(skip map[string]bool, kept map[string]string) map[string]any {
+		b, err := RenderEnvApp(w, "base", "zenify.test", "main", images, 2, skip, kept)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a renderedApp
+		if err := yaml.Unmarshal(b, &a); err != nil {
+			t.Fatal(err)
+		}
+		return a.Spec.Source.Helm.ValuesObject
 	}
-	vals := a.Spec.Source.Helm.ValuesObject
+	vals := render2(map[string]bool{"shop-gateway": true}, nil)
 	if dig(vals, "shop-gateway", "enabled") != false || dig(vals, "shop-gateway", "values") != nil {
 		t.Errorf("shop-gateway = %v, want disabled without values", vals["shop-gateway"])
 	}
 	if dig(vals, "shop-api", "values", "image", "tag") != "a" {
 		t.Errorf("shop-api lost its tag: %v", vals["shop-api"])
 	}
-	for _, n := range ChildApps(w, "base", 2, skip) {
+	vals = render2(nil, map[string]string{"shop-gateway": "sha-old"})
+	if dig(vals, "shop-gateway", "enabled") == false || dig(vals, "shop-gateway", "values", "image", "tag") != "sha-old" {
+		t.Errorf("kept shop-gateway = %v, want enabled at sha-old", vals["shop-gateway"])
+	}
+	if _, err := RenderEnvApp(w, "base", "zenify.test", "main", images, 2, nil, nil); err == nil {
+		t.Error("a phase-2 app without a tag, skip or keep must stay a config error")
+	}
+	for _, n := range ChildApps(w, "base", 2, map[string]bool{"shop-gateway": true}) {
 		if n == ChildAppName("shop-gateway", "base") {
 			t.Error("ChildApps lists a skipped app")
 		}

@@ -98,11 +98,15 @@ func fakeInfra(t *testing.T, alreadyThere bool) (infraDeps, *[]string, *infraRun
 			rec("buildctl")
 			return "/bin/buildctl", nil
 		},
+		deployedTags: func(context.Context, infra.Runner, infra.Workspace, string) (map[string]string, error) {
+			return nil, nil
+		},
 		scanTargets: func(_ context.Context, _ infra.Runner, w infra.Workspace, _, _, _ string, _ map[string]string) ([]infra.BuildTarget, error) {
 			var ts []infra.BuildTarget
 			for _, b := range w.Builds {
 				ts = append(ts, infra.BuildTarget{Repo: b.Repo, Image: b.Image})
 			}
+			ts = append(ts, infra.BuildTarget{Repo: "scan-tool", Image: "scan-tool"}) // scanned, not in builds[]
 			return ts, nil
 		},
 		build: func(_ context.Context, _ infra.BuildRunner, _ string, tg infra.BuildTarget, _ map[string]string) (infra.BuildResult, error) {
@@ -196,6 +200,18 @@ func failBuilds(d *infraDeps, repos ...string) {
 	}
 }
 
+// hasRow reports whether a table line has image as its first and status as
+// its second field, whatever the column spacing.
+func hasRow(out, image, status string) bool {
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(l), "│"))
+		if len(f) >= 2 && f[0] == image && f[1] == status {
+			return true
+		}
+	}
+	return false
+}
+
 // A failed image does not stop up (FR-13.3): the next image is still built,
 // the table says FAIL with the cause, the app that needs it is left out of
 // phase 2 (FR-13.4), the rest deploys and state is saved, and the exit is
@@ -226,11 +242,19 @@ func TestInfraUp_FailedImageContinuesAndSkipsItsApp(t *testing.T) {
 	if indexOf(*steps, "save-state") < 0 {
 		t.Errorf("state was not saved: %v", *steps)
 	}
-	for _, want := range []string{"✗", "npm ERR! 401 unauthorized", "shop-gateway  FAIL", "shop-web      OK",
-		"skipped shop-gateway: image shop-gateway failed", "built, no deploy config: team/base-ui"} {
+	for _, want := range []string{"✗", "npm ERR! 401 unauthorized",
+		"skipped shop-gateway: image shop-gateway failed", "built, no deploy config: scan-tool"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
+	}
+	for img, status := range map[string]string{"shop-gateway": "FAIL", "shop-web": "OK"} {
+		if !hasRow(out, img, status) {
+			t.Errorf("table has no %s row with %s:\n%s", img, status, out)
+		}
+	}
+	if strings.Contains(out, "no deploy config: team/base-ui") {
+		t.Errorf("a declared builds[] base image got the no-deploy line:\n%s", out)
 	}
 	if strings.Contains(out, "step 4/9") {
 		t.Errorf("the screen shows more than the last error line:\n%s", out)
@@ -275,9 +299,15 @@ func TestInfraUp_SeedImageFailureStopsBeforePhase1(t *testing.T) {
 		t.Error("apply ran although the seed image failed")
 		return false, nil
 	}
-	_, _, err := runInfra(d, "up", "--local")
-	if exitcode.Code(err) == 0 || err == nil || !strings.Contains(err.Error(), "seed") {
-		t.Fatalf("err = %v, want a seed failure", err)
+	out, _, err := runInfra(d, "up", "--local")
+	if exitcode.Code(err) == 0 || err == nil || !strings.Contains(err.Error(), "demo-seed") {
+		t.Fatalf("err = %v, want a failure naming the seed image", err)
+	}
+	if indexOf(*steps, "build scan-tool") >= 0 {
+		t.Errorf("builds went on after the seed image failed: %v", *steps)
+	}
+	if !hasRow(out, "demo-seed", "FAIL") {
+		t.Errorf("table lacks the seed FAIL row:\n%s", out)
 	}
 	if indexOf(*steps, "save-state") >= 0 {
 		t.Errorf("state saved after a seed failure: %v", *steps)
@@ -759,5 +789,38 @@ func TestInfraUp_WorkspaceErrorSurfaces(t *testing.T) {
 	}
 	if len(*steps) != 0 {
 		t.Errorf("steps ran: %v", *steps)
+	}
+}
+
+// A rerun whose rebuild fails must not prune an app that already runs: it
+// keeps its deployed tag, the run still ends non-zero (FR-13.6).
+func TestInfraUp_FailedImageKeepsDeployedApp(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	failBuilds(&d, "shop-gateway")
+	d.deployedTags = func(context.Context, infra.Runner, infra.Workspace, string) (map[string]string, error) {
+		return map[string]string{"shop-gateway": "sha-deployed", "shop-api": "sha-old-api"}, nil
+	}
+	var phase2 []byte
+	d.apply = func(_ context.Context, _ infra.Runner, m []byte) (bool, error) {
+		if bytes.Contains(m, []byte("sha-shop-api")) {
+			phase2 = m
+		}
+		return true, nil
+	}
+	out, _, err := runInfra(d, "up", "--local")
+	if exitcode.Code(err) == 0 || err == nil || !strings.Contains(err.Error(), "shop-gateway") {
+		t.Fatalf("err = %v, want non-zero naming shop-gateway", err)
+	}
+	if !strings.Contains(out, "kept shop-gateway at sha-deployed: image shop-gateway failed") || strings.Contains(out, "skipped shop-gateway") {
+		t.Errorf("want a kept line, no skipped line:\n%s", out)
+	}
+	if !strings.Contains(string(phase2), "sha-deployed") || strings.Contains(string(phase2), "sha-old-api") {
+		t.Errorf("phase 2 must keep shop-gateway at sha-deployed and give shop-api its new tag:\n%s", phase2)
+	}
+	if strings.Contains(string(phase2), "shop-gateway:\n    name: shop-gateway-base-local\n    namespace: env-base\n    enabled: false") {
+		t.Error("the deployed app was disabled")
+	}
+	if indexOf(*steps, "wait shop-gateway-base-local") < 0 || indexOf(*steps, "save-state") < 0 {
+		t.Errorf("kept app must still be waited on and state saved: %v", *steps)
 	}
 }

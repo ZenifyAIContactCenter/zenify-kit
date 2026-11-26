@@ -259,3 +259,17 @@ func TestShow_SeedPassword(t *testing.T) {
 		t.Fatalf("loginHelp = %q with seed.password set", rep.LoginHelp)
 	}
 }
+
+// Only phase-2 apps with a child Application carrying an image.tag are
+// "deployed"; an app with no Application or no tag is not.
+func TestDeployedTags_OnlyAppsRunningATag(t *testing.T) {
+	r := showRunner(showRoot, child("shop-api-base-local", "sha-be00001"), child("shop-gateway-base-local", ""),
+		child("app-config-base-local", "sha-seed"))
+	got, err := DeployedTags(context.Background(), r, testWS(t), "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got["shop-api"] != "sha-be00001" {
+		t.Errorf("DeployedTags = %v, want only shop-api at sha-be00001", got)
+	}
+}

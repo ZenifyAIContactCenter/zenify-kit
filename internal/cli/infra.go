@@ -50,6 +50,7 @@ type infraDeps struct {
 	build          func(ctx context.Context, br infra.BuildRunner, ws string, t infra.BuildTarget, refs map[string]string) (infra.BuildResult, error)
 	apply          func(ctx context.Context, r infra.Runner, manifest []byte) (bool, error)
 	appExists      func(ctx context.Context, r infra.Runner, name string) (bool, error)
+	deployedTags   func(ctx context.Context, r infra.Runner, w infra.Workspace, slug string) (map[string]string, error)
 	applyEnvCA     func(ctx context.Context, r infra.Runner, slug string, pem []byte) error
 	saveState      func(home string, s *infra.State) error
 	livePlatform   func(ctx context.Context, r infra.Runner) (infra.PlatformTarget, bool, error)
@@ -88,6 +89,7 @@ func defaultInfraDeps() infraDeps {
 		},
 		lock:            infra.LockHost,
 		applyEnvCA:      infra.ApplyEnvCA,
+		deployedTags:    infra.DeployedTags,
 		installK3s:      infra.InstallK3s,
 		installArgo:     infra.InstallArgo,
 		setRepoCred:     infra.SetRepoCredential,
@@ -426,20 +428,39 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 		return err
 	}
 
-	images, failed, err := d.buildImages(ctx, v, w, home, ws, domain, refs)
+	images, failed, failedRepos, err := d.buildImages(ctx, v, w, home, ws, domain, refs)
 	if err != nil {
 		return err
 	}
-	// an app whose image failed is left out of phase 2; the run still ends
-	// non-zero, after the state is saved, naming everything left out
-	skipped := infra.SkippedApps(w, images)
-	skip := map[string]bool{}
-	for _, k := range skipped {
-		skip[k] = true
-	}
-	v.printLines(skippedLines(w, skipped))
 	slug := infra.BaseSlug
-	if err := d.applyEnv(ctx, v, w, slug, domain, chartRef, images, skip, pem); err != nil {
+	// an app whose image failed: if it already runs, it keeps its deployed
+	// tag (leaving it out would prune a healthy app); otherwise it is left out
+	// of phase 2. Either way the run ends non-zero after the state is saved.
+	broken := infra.SkippedApps(w, failedRepos)
+	kept := map[string]string{}
+	if len(broken) > 0 {
+		deployed, err := d.deployedTags(ctx, d.runner, w, slug)
+		if err != nil {
+			return failStep("deployed tags", err)
+		}
+		for _, k := range broken {
+			if t, ok := deployed[k]; ok {
+				kept[k] = t
+			}
+		}
+	}
+	skip := map[string]bool{}
+	var skipped, keptKeys []string
+	for _, k := range broken {
+		if _, ok := kept[k]; ok {
+			keptKeys = append(keptKeys, k)
+		} else {
+			skip[k] = true
+			skipped = append(skipped, k)
+		}
+	}
+	v.printLines(skippedLines(w, skipped, keptKeys, kept))
+	if err := d.applyEnv(ctx, v, w, slug, domain, chartRef, images, skip, kept, pem); err != nil {
 		return err
 	}
 	if err := v.run(ctx, "state", func(context.Context) (stepOutcome, error) {
@@ -451,10 +472,10 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	}); err != nil {
 		return err
 	}
-	if len(failed) > 0 || len(skipped) > 0 {
+	if len(failed) > 0 {
 		v.close("finished with failures")
-		return exitcode.New(exitcode.Fail, fmt.Errorf("%d image(s) failed to build (%s); %d app(s) skipped (%s); the rest is deployed, rerun `zenify infra up --local` to retry the failed images",
-			len(failed), strings.Join(failed, ", "), len(skipped), strings.Join(skipped, ", ")))
+		return exitcode.New(exitcode.Fail, fmt.Errorf("%d image(s) failed to build (%s); %d app(s) skipped (%s); %d app(s) kept at their deployed image (%s); the rest is deployed, rerun `zenify infra up --local` to retry the failed images",
+			len(failed), strings.Join(failed, ", "), len(skipped), strings.Join(skipped, ", "), len(keptKeys), strings.Join(keptKeys, ", ")))
 	}
 	v.close("ready")
 	fmt.Fprintf(out, "\nready: %s\n", strings.Join(infra.EnvURLs(w, slug, domain), " "))
@@ -484,7 +505,7 @@ func lastLine(err error) string {
 // repo → tag of the images that exist (built or tag already there) and the
 // failed image names, after printing the summary table. The seed image
 // failing is an error: without data the env is pointless.
-func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspace, home, ws, domain string, refs map[string]string) (map[string]string, []string, error) {
+func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspace, home, ws, domain string, refs map[string]string) (map[string]string, []string, map[string]bool, error) {
 	var ts []infra.BuildTarget
 	if err := v.run(ctx, "buildctl", func(ctx context.Context) (stepOutcome, error) {
 		if _, err := d.ensureBuildctl(ctx, d.runner, home); err != nil {
@@ -494,7 +515,7 @@ func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspa
 		ts, err = d.scanTargets(ctx, d.runner, w, ws, domain, infra.BaseSlug, refs)
 		return stepOutcome{detail: fmt.Sprintf("ready, %d image(s) to check", len(ts))}, err
 	}); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	names := make([]string, len(ts))
 	for i, t := range ts {
@@ -504,7 +525,8 @@ func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspa
 	images := map[string]string{}
 	var rows []buildRow
 	var failed []string
-	seedFailed := false
+	failedRepos := map[string]bool{}
+	seedImage := ""
 	for i, t := range ts {
 		start := time.Now()
 		row := buildRow{image: t.Image}
@@ -526,21 +548,25 @@ func (d infraDeps) buildImages(ctx context.Context, v *stepView, w infra.Workspa
 			return stepOutcome{detail: res.Tag + " built"}, nil
 		})
 		if ctx.Err() != nil {
-			return nil, nil, failStep(names[i], ctx.Err())
+			return nil, nil, nil, failStep(names[i], ctx.Err())
 		}
 		row.dur = time.Since(start).Round(time.Second)
 		rows = append(rows, row)
 		if row.status == "FAIL" {
 			failed = append(failed, t.Image)
-			seedFailed = seedFailed || t.Repo == w.Seed.Repo
+			failedRepos[t.Repo] = true
+			if t.Repo == w.Seed.Repo {
+				seedImage = t.Image
+				break // fail fast: no data, no env, so build nothing else
+			}
 		}
 	}
 	v.printLines(summaryLines(rows))
-	v.printLines(noDeployLines(w, ts, images))
-	if seedFailed {
-		return nil, nil, failStep("build "+w.Seed.Repo, errors.New("the seed image failed to build, nothing was deployed"))
+	if seedImage != "" {
+		return nil, nil, nil, failStep("build "+seedImage, errors.New("the seed image failed to build, nothing was deployed"))
 	}
-	return images, failed, nil
+	v.printLines(noDeployLines(w, rows, ts))
+	return images, failed, failedRepos, nil
 }
 
 // summaryLines is the table `image · OK|FAIL|SKIP · duration · reason`.
@@ -555,31 +581,44 @@ func summaryLines(rows []buildRow) []string {
 	return strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
 }
 
-// noDeployLines names the built images no envApps entry (and not the seed)
-// uses.
-func noDeployLines(w infra.Workspace, ts []infra.BuildTarget, images map[string]string) []string {
-	used := map[string]bool{w.Seed.Repo: true}
+// noDeployLines names the scanned images (not the declared builds[] ones, which
+// may be bases on purpose) that no envApps entry uses.
+func noDeployLines(w infra.Workspace, rows []buildRow, ts []infra.BuildTarget) []string {
+	declared := map[string]bool{}
+	for _, b := range w.Builds {
+		declared[b.Repo] = true
+	}
 	for _, a := range w.EnvApps {
-		used[a.Repo] = true
+		declared[a.Repo] = true
 	}
 	var out []string
-	for _, t := range ts {
-		if images[t.Repo] != "" && !used[t.Repo] {
+	for i, t := range ts {
+		if declared[t.Repo] || i >= len(rows) {
+			continue
+		}
+		switch rows[i].status {
+		case "OK":
 			out = append(out, "built, no deploy config: "+t.Image)
+		case "SKIP":
+			out = append(out, "image ready, no deploy config: "+t.Image)
 		}
 	}
 	return out
 }
 
-// skippedLines is one `skipped <key>: image <repo> failed` per left-out app.
-func skippedLines(w infra.Workspace, skipped []string) []string {
+// skippedLines is one line per app that is left out (`skipped`) or keeps its
+// deployed image (`kept`) because its image failed.
+func skippedLines(w infra.Workspace, skipped, keptKeys []string, tags map[string]string) []string {
+	repo := map[string]string{}
+	for _, a := range w.EnvApps {
+		repo[a.Key] = a.Repo
+	}
 	var out []string
+	for _, k := range keptKeys {
+		out = append(out, fmt.Sprintf("kept %s at %s: image %s failed", k, tags[k], repo[k]))
+	}
 	for _, k := range skipped {
-		for _, a := range w.EnvApps {
-			if a.Key == k {
-				out = append(out, fmt.Sprintf("skipped %s: image %s failed", k, a.Repo))
-			}
-		}
+		out = append(out, fmt.Sprintf("skipped %s: image %s failed", k, repo[k]))
 	}
 	return out
 }
@@ -587,7 +626,7 @@ func skippedLines(w infra.Workspace, skipped []string) []string {
 // applyEnv publishes the local CA into env slug's namespace, then brings the
 // env up in two phases: datastores + seed, then the apps. An env where any
 // phase-2 app already exists skips phase 1: re-applying it would prune them.
-func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace, slug, domain, chartRef string, images map[string]string, skip map[string]bool, caPEM []byte) error {
+func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace, slug, domain, chartRef string, images map[string]string, skip map[string]bool, kept map[string]string, caPEM []byte) error {
 	r := d.runner
 	root := infra.EnvAppName(slug)
 	if err := v.run(ctx, "env-ca", func(ctx context.Context) (stepOutcome, error) {
@@ -608,7 +647,7 @@ func (d infraDeps) applyEnv(ctx context.Context, v *stepView, w infra.Workspace,
 					}
 				}
 			}
-			m, err := infra.RenderEnvApp(w, slug, domain, chartRef, images, phase, skip)
+			m, err := infra.RenderEnvApp(w, slug, domain, chartRef, images, phase, skip, kept)
 			if err != nil {
 				return stepOutcome{}, err
 			}
