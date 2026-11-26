@@ -72,6 +72,35 @@ type WorkspaceApp struct {
 	Ingress []WorkspaceIngress `json:"ingress,omitempty"`
 	// Seed marks the app that receives values slug, domain and seed.tag.
 	Seed bool `json:"seed,omitempty"`
+	// Profiles lists the profiles (core, full) the app belongs to; absent = both.
+	Profiles []string `json:"profiles,omitempty"`
+}
+
+// Profiles of `zenify infra up --local --profile`.
+const (
+	ProfileCore = "core"
+	ProfileFull = "full"
+)
+
+// ValidProfile reports whether p is a profile name.
+func ValidProfile(p string) bool { return p == ProfileCore || p == ProfileFull }
+
+// inProfile reports whether the app belongs to profile p.
+func (a WorkspaceApp) inProfile(p string) bool {
+	return len(a.Profiles) == 0 || slices.Contains(a.Profiles, p)
+}
+
+// ForProfile returns w with only the env apps of profile p: an app outside it
+// is gone, as if infra.json did not list it.
+func (w Workspace) ForProfile(p string) Workspace {
+	apps := make([]WorkspaceApp, 0, len(w.EnvApps))
+	for _, a := range w.EnvApps {
+		if a.inProfile(p) {
+			apps = append(apps, a)
+		}
+	}
+	w.EnvApps = apps
+	return w
 }
 
 // WorkspaceIngress is one ingress hosts list in an app's values.
@@ -197,6 +226,9 @@ func (w Workspace) validate() error {
 		need(!keys[a.Key], p+"key (duplicate)")
 		need(!slices.Contains(reservedAppKeys, a.Key), p+"key ("+strings.Join(reservedAppKeys, ", ")+" are app-of-apps values, not apps)")
 		keys[a.Key] = true
+		for _, pr := range a.Profiles {
+			need(ValidProfile(pr), p+"profiles "+strconv.Quote(pr)+" ("+ProfileCore+" or "+ProfileFull+")")
+		}
 		need(a.Phase == 1 || a.Phase == 2, p+"phase (1 or 2)")
 		need(a.Repo == "" || builds[a.Repo], p+"repo (must be a builds[].repo)")
 		need(a.Svc == "" || a.Repo != "", p+"repo (an app with svc needs an image)")

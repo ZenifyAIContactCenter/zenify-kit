@@ -15,6 +15,8 @@ type State struct {
 	K3sVersion    string    `json:"k3sVersion"`
 	ArgoCDVersion string    `json:"argocdVersion"`
 	CreatedAt     time.Time `json:"createdAt"`
+	// Profile is the env profile (core or full) the last up deployed; empty = core.
+	Profile string `json:"profile,omitempty"`
 }
 
 func statePath(home string) string { return filepath.Join(infraDir(home), "state.json") }
@@ -63,4 +65,12 @@ func Host(svc, slug, domain string) string {
 		return svc + "." + domain
 	}
 	return svc + "-" + slug + "." + domain
+}
+
+// ActiveProfile is the profile saved in s, core when there is no state or none was saved.
+func (s *State) ActiveProfile() string {
+	if s == nil || s.Profile == "" {
+		return ProfileCore
+	}
+	return s.Profile
 }

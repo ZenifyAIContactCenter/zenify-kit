@@ -262,6 +262,7 @@ func (d infraDeps) upCmd() *cobra.Command {
 	var (
 		local, verbose bool
 		chartRef       string
+		profile        string
 		refFlags       []string
 	)
 	cmd := &cobra.Command{
@@ -276,17 +277,21 @@ func (d infraDeps) upCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
-			return d.runUp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), chartRef, refs, verbose)
+			if cmd.Flags().Changed("profile") && !infra.ValidProfile(profile) {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--profile %q: want %s or %s", profile, infra.ProfileCore, infra.ProfileFull))
+			}
+			return d.runUp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), chartRef, profile, refs, verbose)
 		},
 	}
 	cmd.Flags().BoolVar(&local, "local", false, "target the local k3s devbox (required)")
 	cmd.Flags().StringVar(&chartRef, "chart-ref", "", "helm repo ref for the platform and env charts (default: config, else the deployed platform's, else main)")
+	cmd.Flags().StringVar(&profile, "profile", "", "app set to deploy: core or full (default: the profile saved by the last up, else core)")
 	cmd.Flags().StringArrayVar(&refFlags, "ref", nil, "build <repo>=<ref> instead of the repo's baseRef (repeatable)")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "print every build log line (always saved to the run log)")
 	return cmd
 }
 
-func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef string, refs map[string]string, verbose bool) error {
+func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, profile string, refs map[string]string, verbose bool) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -380,6 +385,10 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 		return err
 	}
 	domain, chartRef := tg.domain, tg.chartRef
+	if profile == "" {
+		profile = tg.state.ActiveProfile()
+	}
+	w = w.ForProfile(profile)
 	if err := v.run(ctx, "argocd", func(ctx context.Context) (stepOutcome, error) {
 		changed, err := d.installArgo(ctx, r)
 		return stepOutcome{detail: changedWord(changed)}, err
@@ -468,7 +477,7 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 		if tg.state != nil && !tg.state.CreatedAt.IsZero() {
 			created = tg.state.CreatedAt // a rerun keeps when the devbox was first set up
 		}
-		return stepOutcome{detail: "saved"}, d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: created})
+		return stepOutcome{detail: "saved"}, d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: created, Profile: profile})
 	}); err != nil {
 		return err
 	}
@@ -694,6 +703,7 @@ func (d infraDeps) statusCmd() *cobra.Command {
 			if err != nil {
 				return failStep("workspace", err)
 			}
+			w = w.ForProfile(tg.state.ActiveProfile())
 			rep, err := d.status(ctx, d.runner, w, home, tg.domain)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err) // already prefixed "status:"
@@ -749,6 +759,7 @@ func (d infraDeps) showCmd() *cobra.Command {
 			if err != nil {
 				return failStep("workspace", err)
 			}
+			w = w.ForProfile(tg.state.ActiveProfile())
 			rep, err := d.show(ctx, d.runner, w, home, tg.domain, slug)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err) // already prefixed "show:"

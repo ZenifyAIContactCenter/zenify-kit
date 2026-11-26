@@ -824,3 +824,122 @@ func TestInfraUp_FailedImageKeepsDeployedApp(t *testing.T) {
 		t.Errorf("kept app must still be waited on and state saved: %v", *steps)
 	}
 }
+
+// withFullOnly puts shop-gateway in profile full only.
+func withFullOnly(t *testing.T, d *infraDeps) {
+	t.Helper()
+	d.spec = func(string) (infra.Workspace, error) {
+		w := testWorkspace(t)
+		for i := range w.EnvApps {
+			if w.EnvApps[i].Key == "shop-gateway" {
+				w.EnvApps[i].Profiles = []string{infra.ProfileFull}
+			}
+		}
+		return w, nil
+	}
+}
+
+// FR-13.5: any profile other than core or full is a bad argument (exit 2).
+func TestInfraUp_BadProfileIsBadArgs(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	_, _, err := runInfra(d, "up", "--local", "--profile", "bogus")
+	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "bogus") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(*steps) != 0 {
+		t.Errorf("steps ran: %v", *steps)
+	}
+}
+
+// The profile decides which apps are rendered, waited for and saved to state;
+// a later up without the flag reuses the saved one, and none saved means core.
+func TestInfraUp_ProfileFiltersAppsAndIsSaved(t *testing.T) {
+	run := func(saved string, args ...string) (rendered string, steps []string, st *infra.State) {
+		d, sp, _ := fakeInfra(t, true)
+		withFullOnly(t, &d)
+		home, _ := d.home()
+		if saved != "" {
+			if err := infra.SaveState(home, &infra.State{Domain: "devbox2.test", Profile: saved}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var phase2 []byte
+		d.apply = func(_ context.Context, _ infra.Runner, m []byte) (bool, error) {
+			if bytes.Contains(m, []byte("tag: sha-shop-api")) {
+				phase2 = m
+			}
+			return true, nil
+		}
+		d.saveState = func(_ string, s *infra.State) error { st = s; return nil }
+		if _, _, err := runInfra(d, append([]string{"up", "--local"}, args...)...); err != nil {
+			t.Fatal(err)
+		}
+		return string(phase2), *sp, st
+	}
+	cases := []struct {
+		name, saved string
+		args        []string
+		wantProfile string
+		wantGateway bool
+	}{
+		{"default is core", "", nil, "core", false},
+		{"explicit full", "", []string{"--profile", "full"}, "full", true},
+		{"saved full reused", "full", nil, "full", true},
+		{"flag beats saved", "full", []string{"--profile", "core"}, "core", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m, steps, st := run(c.saved, c.args...)
+			if st == nil || st.Profile != c.wantProfile {
+				t.Fatalf("saved state = %+v, want profile %s", st, c.wantProfile)
+			}
+			if got := strings.Contains(m, "shop-gateway"); got != c.wantGateway {
+				t.Errorf("phase 2 names shop-gateway = %v, want %v", got, c.wantGateway)
+			}
+			if got := indexOf(steps, "wait shop-gateway-base-local") >= 0; got != c.wantGateway {
+				t.Errorf("waits for shop-gateway = %v, want %v: %v", got, c.wantGateway, steps)
+			}
+		})
+	}
+}
+
+// status and show list only the saved profile's apps (no state = core).
+func TestInfraStatusShow_UseSavedProfile(t *testing.T) {
+	for _, c := range []struct {
+		saved string
+		want  bool
+	}{{"", false}, {"core", false}, {"full", true}} {
+		d, _, _ := fakeInfra(t, true)
+		withFullOnly(t, &d)
+		home, _ := d.home()
+		if c.saved != "" {
+			if err := infra.SaveState(home, &infra.State{Profile: c.saved}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var gotS, gotW infra.Workspace
+		d.status = func(_ context.Context, _ infra.Runner, w infra.Workspace, _, _ string) (infra.Report, error) {
+			gotS = w
+			return infra.Report{}, nil
+		}
+		d.show = func(_ context.Context, _ infra.Runner, w infra.Workspace, _, _, _ string) (infra.ShowReport, error) {
+			gotW = w
+			return infra.ShowReport{}, nil
+		}
+		if _, _, err := runInfra(d, "status", "--local"); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := runInfra(d, "show", "--local"); err != nil {
+			t.Fatal(err)
+		}
+		for name, w := range map[string]infra.Workspace{"status": gotS, "show": gotW} {
+			has := false
+			for _, a := range w.EnvApps {
+				has = has || a.Key == "shop-gateway"
+			}
+			if has != c.want {
+				t.Errorf("saved %q: %s sees shop-gateway = %v, want %v", c.saved, name, has, c.want)
+			}
+		}
+	}
+}

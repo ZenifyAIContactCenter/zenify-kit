@@ -257,3 +257,56 @@ func TestRenderEnvApp_SkipAndKeep(t *testing.T) {
 		}
 	}
 }
+
+// FR-13.5: an app outside the active profile is not rendered at all, like an
+// app that does not exist; an app without profiles is in both.
+func TestForProfile_FiltersAppsAndRender(t *testing.T) {
+	w := testWS(t)
+	for i := range w.EnvApps {
+		if w.EnvApps[i].Key == "shop-gateway" {
+			w.EnvApps[i].Profiles = []string{ProfileFull}
+		}
+	}
+	has := func(w Workspace, key string) bool {
+		for _, a := range w.EnvApps {
+			if a.Key == key {
+				return true
+			}
+		}
+		return false
+	}
+	core, full := w.ForProfile(ProfileCore), w.ForProfile(ProfileFull)
+	if has(core, "shop-gateway") || !has(full, "shop-gateway") {
+		t.Fatalf("shop-gateway: core=%v full=%v, want false/true", has(core, "shop-gateway"), has(full, "shop-gateway"))
+	}
+	for _, k := range []string{"mongo", "app-config", "shop-api", "shop-web"} { // no profiles = both, seed and datastores included
+		if !has(core, k) || !has(full, k) {
+			t.Errorf("%s must be in both profiles", k)
+		}
+	}
+	if len(w.EnvApps) != 7 {
+		t.Errorf("ForProfile mutated the source: %d apps", len(w.EnvApps))
+	}
+	b, err := RenderEnvApp(core, "base", "zenify.test", "main", testImages, 2, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "shop-gateway") {
+		t.Errorf("core render still names shop-gateway:\n%s", b)
+	}
+	b, err = RenderEnvApp(full, "base", "zenify.test", "main", testImages, 2, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "shop-gateway") {
+		t.Errorf("full render lacks shop-gateway:\n%s", b)
+	}
+	for _, n := range ChildApps(core, "base", 2, nil) {
+		if n == ChildAppName("shop-gateway", "base") {
+			t.Error("core ChildApps lists shop-gateway")
+		}
+	}
+	if got := SkippedApps(core, map[string]bool{"shop-gateway": true}); len(got) != 0 {
+		t.Errorf("SkippedApps(core) = %v, want none: the app is not in the profile", got)
+	}
+}
