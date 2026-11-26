@@ -106,7 +106,8 @@ func ApplyPlatform(ctx context.Context, r Runner, domain, chartRef string) error
 
 type appStatus struct {
 	Spec struct {
-		Source json.RawMessage `json:"source"`
+		Source  json.RawMessage `json:"source"`
+		Sources json.RawMessage `json:"sources"`
 	} `json:"spec"`
 	Status struct {
 		Sync struct {

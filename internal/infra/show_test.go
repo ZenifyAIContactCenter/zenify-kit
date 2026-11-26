@@ -100,3 +100,31 @@ func TestShow_JSONHasAccountsButNoPassword(t *testing.T) {
 		t.Fatalf("show json = %s", b)
 	}
 }
+
+// The running tag is what show exists for: a source that cannot be read must
+// fail naming the app, never look like "not deployed yet" (-).
+func TestShow_UnreadableTagIsAnError(t *testing.T) {
+	bad := `{"metadata":{"name":"contact-center-web-base-local"},"spec":{"source":{"helm":"oops"}},"status":{}}`
+	_, err := Show(context.Background(), showRunner(showRoot, bad), "/home/u", "quyentm.test", "")
+	if err == nil || !strings.Contains(err.Error(), "contact-center-web-base-local") || !strings.Contains(err.Error(), "unreadable") {
+		t.Fatalf("err = %v", err)
+	}
+	multi := `{"metadata":{"name":"contact-center-be-base-local"},"spec":{"sources":[{"helm":{}}]},"status":{}}`
+	if _, err := Show(context.Background(), showRunner(showRoot, multi), "/home/u", "quyentm.test", ""); err == nil || !strings.Contains(err.Error(), "multi-source") {
+		t.Fatalf("multi-source err = %v", err)
+	}
+}
+
+// A child that exists without image.tag, or not at all yet, has no tag ("-").
+func TestShow_MissingTagIsEmpty(t *testing.T) {
+	noTag := `{"metadata":{"name":"contact-center-be-base-local"},"spec":{"source":{"helm":{"valuesObject":{}}}},"status":{}}`
+	rep, err := Show(context.Background(), showRunner(showRoot, noTag), "/home/u", "quyentm.test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range rep.Envs[0].Apps {
+		if a.Tag != "" {
+			t.Errorf("%s tag = %q, want empty", a.Svc, a.Tag)
+		}
+	}
+}

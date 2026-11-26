@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -42,8 +43,16 @@ type ShowReport struct {
 // CACopyPath is the CA copy InstallCA keeps for tools (NODE_EXTRA_CA_CERTS).
 func CACopyPath(home string) string { return filepath.Join(infraDir(home), caCopyName) }
 
-// imageTag is image.tag of a child Application's helm values, or "".
-func (a appStatus) imageTag() string {
+// imageTag is image.tag of a child Application's helm values; an empty source
+// or no image.tag is a legitimate "no tag". A source that does not parse, or a
+// multi-source Application the kit never renders, is an error.
+func (a appStatus) imageTag() (string, error) {
+	if len(a.Spec.Source) == 0 {
+		if len(a.Spec.Sources) > 0 && string(a.Spec.Sources) != "null" {
+			return "", errors.New("spec.sources (multi-source) is not supported, want spec.source")
+		}
+		return "", nil
+	}
 	var src struct {
 		Helm struct {
 			ValuesObject struct {
@@ -53,10 +62,10 @@ func (a appStatus) imageTag() string {
 			} `json:"valuesObject"`
 		} `json:"helm"`
 	}
-	if len(a.Spec.Source) == 0 || json.Unmarshal(a.Spec.Source, &src) != nil {
-		return ""
+	if err := json.Unmarshal(a.Spec.Source, &src); err != nil {
+		return "", fmt.Errorf("parse spec.source: %w", err)
 	}
-	return src.Helm.ValuesObject.Image.Tag
+	return src.Helm.ValuesObject.Image.Tag, nil
 }
 
 // Show lists each env (or only slug) with its app URLs, repos and image tags
@@ -102,8 +111,12 @@ func Show(ctx context.Context, r Runner, home, domain, slug string) (ShowReport,
 			if a.svc == "" {
 				continue
 			}
-			child := byName[ChildAppName(a.name, s)] // absent child: empty tag
-			e.Apps = append(e.Apps, ShowApp{Svc: a.svc, URL: "https://" + Host(a.svc, s, envDomain), Repo: a.name, Tag: child.imageTag()})
+			name := ChildAppName(a.name, s)
+			tag, err := byName[name].imageTag() // absent child: empty source, no tag
+			if err != nil {
+				return rep, fmt.Errorf("show: application %s: image tag unreadable: %w", name, err)
+			}
+			e.Apps = append(e.Apps, ShowApp{Svc: a.svc, URL: "https://" + Host(a.svc, s, envDomain), Repo: a.name, Tag: tag})
 		}
 		rep.Envs = append(rep.Envs, e)
 	}
