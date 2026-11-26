@@ -70,11 +70,14 @@ type WorkspaceIngress struct {
 	Path   string `json:"path"`   // URL path prefix
 }
 
-// WorkspaceSeed is the seed repo and its logins; passwords are never stored.
+// WorkspaceSeed is the seed repo and its logins. Password is the fixed test
+// password of the seed data (shown by show and up); without it PasswordHint
+// says where the password is documented.
 type WorkspaceSeed struct {
 	Repo         string        `json:"repo"`
 	Tenant       string        `json:"tenant"`
-	PasswordHint string        `json:"passwordHint"`
+	Password     string        `json:"password,omitempty"`
+	PasswordHint string        `json:"passwordHint,omitempty"`
 	Accounts     []SeedAccount `json:"accounts"`
 }
 
@@ -144,7 +147,7 @@ func (w Workspace) validate() error {
 	need(len(w.EnvApps) > 0, "envApps")
 	need(w.Seed.Repo != "", "seed.repo")
 	need(w.Seed.Tenant != "", "seed.tenant")
-	need(w.Seed.PasswordHint != "", "seed.passwordHint")
+	need(w.Seed.Password != "" || w.Seed.PasswordHint != "", "seed.password or seed.passwordHint")
 	need(len(w.Seed.Accounts) > 0, "seed.accounts")
 	builds, images := map[string]bool{}, map[string]bool{}
 	for i, b := range w.Builds {
@@ -213,11 +216,12 @@ func (w Workspace) Repos() []string {
 	return out
 }
 
-// Accounts returns the seed accounts with the tenant filled in.
+// Accounts returns the seed accounts with the tenant and seed password filled in.
 func (w Workspace) Accounts() []SeedAccount {
 	out := make([]SeedAccount, 0, len(w.Seed.Accounts))
 	for _, a := range w.Seed.Accounts {
 		a.Tenant = w.Seed.Tenant
+		a.Password = w.Seed.Password
 		out = append(out, a)
 	}
 	return out

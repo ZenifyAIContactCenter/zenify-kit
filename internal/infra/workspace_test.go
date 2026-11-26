@@ -16,6 +16,9 @@ func TestWorkspaceValidateRejectsUnsafeValues(t *testing.T) {
 		want string // substring of the error; "" = valid
 	}{
 		{"fixture is valid", func(*Workspace) {}, ""},
+		// a dev must learn the seed login somewhere: the password itself or where it is documented
+		{"seed password without hint is valid", func(w *Workspace) { w.Seed.Password, w.Seed.PasswordHint = "pw", "" }, ""},
+		{"seed without password or hint", func(w *Workspace) { w.Seed.Password, w.Seed.PasswordHint = "", "" }, "seed.password or seed.passwordHint"},
 		{"30-byte svc and key are valid", func(w *Workspace) { w.EnvApps[4].Svc, w.EnvApps[4].Key = ok, ok }, ""},
 		// the user's gh token is sent to helmRepoURL
 		{"helm http", func(w *Workspace) { w.HelmRepoURL = "http://github.com/a/b.git" }, "helmRepoURL (an https://github.com"},

@@ -48,7 +48,7 @@ kubectl -n argocd get application env-base -o jsonpath='{.status.sync.status}/{.
 kubectl -n argocd annotate application env-base argocd.argoproj.io/refresh=hard --overwrite   # buộc so lại với repo helm
 ```
 
-Mật khẩu admin ban đầu (user `admin`); `zenify infra show` chỉ in lệnh này, không in mật khẩu:
+Mật khẩu admin ban đầu (user `admin`) có sẵn ở dòng `login:` của `zenify infra show --local`. Đã xoá secret ban đầu sau khi đổi mật khẩu thì `show` in lệnh dưới thay vào:
 
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d

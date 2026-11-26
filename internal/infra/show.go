@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,11 +11,13 @@ import (
 	"strings"
 )
 
-// SeedAccount is a seeded login; it deliberately has no password field.
+// SeedAccount is a seeded login. Password is filled from seed.password by
+// Workspace.Accounts, never read from an account entry.
 type SeedAccount struct {
-	Role   string `json:"role"`
-	Email  string `json:"email"`
-	Tenant string `json:"tenant"`
+	Role     string `json:"role"`
+	Email    string `json:"email"`
+	Tenant   string `json:"tenant"`
+	Password string `json:"password,omitempty"`
 }
 
 // ShowApp is one app of an env: its URL, repo and running image tag.
@@ -39,8 +42,8 @@ type ShowReport struct {
 	CA       string        `json:"ca"`
 	Envs     []ShowEnv     `json:"envs"`
 	Accounts []SeedAccount `json:"accounts"`
-	// LoginHelp says where the seed password is documented (never the password).
-	LoginHelp string      `json:"loginHelp"`
+	// LoginHelp says where the seed password is documented, when seed.password is unset.
+	LoginHelp string      `json:"loginHelp,omitempty"`
 	Cluster   ShowCluster `json:"cluster"`
 }
 
@@ -60,10 +63,11 @@ type ShowRegistry struct {
 	List    string `json:"list"`
 }
 
-// ShowArgoCD says how to reach ArgoCD; it carries the command that reads the
-// initial admin password, never the password.
+// ShowArgoCD says how to reach ArgoCD and its initial admin password, empty
+// once the dev deleted argocd-initial-admin-secret (PasswordCommand stays).
 type ShowArgoCD struct {
 	URL             string `json:"url"`
+	Password        string `json:"password,omitempty"`
 	PasswordCommand string `json:"passwordCommand"`
 	IngressURL      string `json:"ingressUrl,omitempty"`
 }
@@ -81,8 +85,7 @@ type ShowCluster struct {
 	OpenBao string `json:"openbao,omitempty"`
 }
 
-// argoPasswordCommand reads the initial admin password; show prints the
-// command, never its output.
+// argoPasswordCommand reads the initial admin password by hand.
 const argoPasswordCommand = `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d` //nolint:gosec // G101 -- a command the dev runs, not a credential
 
 func baseCluster() (ShowCluster, error) {
@@ -132,6 +135,18 @@ func clusterLive(ctx context.Context, r Runner, c *ShowCluster, domain string, a
 		if host := "argocd." + domain; slices.Contains(strings.Fields(string(out)), host) {
 			a.IngressURL = "https://" + host
 		}
+		out, err = kubectl(ctx, r, nil, "-n", argoNS, "get", "secret", "argocd-initial-admin-secret",
+			"--ignore-not-found", "-o", "jsonpath={.data.password}")
+		if err != nil {
+			return fmt.Errorf("read argocd admin password: %w", err)
+		}
+		if enc := strings.TrimSpace(string(out)); enc != "" {
+			pw, err := base64.StdEncoding.DecodeString(enc)
+			if err != nil {
+				return fmt.Errorf("decode argocd admin password: %w", err)
+			}
+			a.Password = string(pw)
+		}
 		c.ArgoCD = a
 	}
 	out, err = kubectl(ctx, r, nil, "get", "services", "-A", "-l", "app.kubernetes.io/name=openbao", "-o",
@@ -178,7 +193,10 @@ func (a appStatus) imageTag() (string, error) {
 // reach the cluster (kubeconfig, registry, ArgoCD, OpenBao). It only
 // reads (kubectl get). An unknown slug is an error naming the envs.
 func Show(ctx context.Context, r Runner, w Workspace, home, domain, slug string) (ShowReport, error) {
-	rep := ShowReport{Domain: domain, CA: CACopyPath(home), Envs: []ShowEnv{}, Accounts: w.Accounts(), LoginHelp: w.Seed.PasswordHint}
+	rep := ShowReport{Domain: domain, CA: CACopyPath(home), Envs: []ShowEnv{}, Accounts: w.Accounts()}
+	if w.Seed.Password == "" {
+		rep.LoginHelp = w.Seed.PasswordHint
+	}
 	var err error
 	if rep.Cluster, err = baseCluster(); err != nil {
 		return rep, fmt.Errorf("show: %w", err)

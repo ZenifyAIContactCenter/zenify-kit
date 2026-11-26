@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -165,6 +166,10 @@ func TestEnvDomain_MissingFallsBack(t *testing.T) {
 }
 
 func clusterRunner(ingressHosts, openbao string) *fakeRunner {
+	return clusterRunnerSecret(ingressHosts, openbao, base64.StdEncoding.EncodeToString([]byte("planted-admin-secret")))
+}
+
+func clusterRunnerSecret(ingressHosts, openbao, argoSecret string) *fakeRunner {
 	base := showRunner()
 	return &fakeRunner{respond: func(c call) ([]byte, error) {
 		l := c.line()
@@ -177,16 +182,16 @@ func clusterRunner(ingressHosts, openbao string) *fakeRunner {
 			return []byte(ingressHosts), nil
 		case strings.Contains(l, "app.kubernetes.io/name=openbao"):
 			return []byte(openbao), nil
-		case strings.Contains(l, "secret"):
-			return []byte("planted-admin-secret"), nil
+		case strings.Contains(l, "argocd-initial-admin-secret"):
+			return []byte(argoSecret), nil
 		}
 		return base.respond(c)
 	}}
 }
 
 // A dev must be able to reach the cluster with their own kubectl, registry and
-// ArgoCD from show alone, but show must never read the ArgoCD admin secret
-// (it prints the command instead) and must not invent rows for absent parts.
+// ArgoCD (including its admin login) from show alone, and show must not invent
+// rows for absent parts.
 func TestShow_ClusterAccess(t *testing.T) {
 	r := clusterRunner("", "")
 	rep, err := Show(context.Background(), r, testWS(t), "/home/u", "devbox2.test", "")
@@ -203,18 +208,16 @@ func TestShow_ClusterAccess(t *testing.T) {
 	if c.Registry.Alias != RegistryHost || c.Registry.Address != RegistryClusterIP+":5000" {
 		t.Fatalf("registry = %+v", c.Registry)
 	}
-	if c.ArgoCD == nil || c.ArgoCD.URL != "https://argocd-server.argocd.svc" || c.ArgoCD.PasswordCommand != argoPasswordCommand || c.ArgoCD.IngressURL != "" {
+	if c.ArgoCD == nil || c.ArgoCD.URL != "https://argocd-server.argocd.svc" || c.ArgoCD.PasswordCommand != argoPasswordCommand ||
+		c.ArgoCD.Password != "planted-admin-secret" || c.ArgoCD.IngressURL != "" {
 		t.Fatalf("argocd = %+v", c.ArgoCD)
 	}
 	if c.OpenBao != "" {
 		t.Fatalf("openbao row without a Service: %q", c.OpenBao)
 	}
 	b, _ := json.Marshal(rep)
-	if strings.Contains(string(b), "planted-admin-secret") || strings.Contains(string(b), `"openbao"`) || strings.Contains(string(b), "ingressUrl") {
+	if strings.Contains(string(b), `"openbao"`) || strings.Contains(string(b), "ingressUrl") {
 		t.Fatalf("show json = %s", b)
-	}
-	if r.ran("kubectl --kubeconfig " + K3sKubeconfig + " -n argocd get secret") {
-		t.Fatal("show read the ArgoCD admin secret")
 	}
 
 	rep, err = Show(context.Background(), clusterRunner("argocd.devbox2.test", "openbao openbao 8200\n"), testWS(t), "/home/u", "devbox2.test", "")
@@ -223,5 +226,36 @@ func TestShow_ClusterAccess(t *testing.T) {
 	}
 	if rep.Cluster.ArgoCD.IngressURL != "https://argocd.devbox2.test" || rep.Cluster.OpenBao != "http://openbao.openbao.svc:8200" {
 		t.Fatalf("ingress/openbao = %+v %q", rep.Cluster.ArgoCD, rep.Cluster.OpenBao)
+	}
+}
+
+// Once the dev deleted argocd-initial-admin-secret (after changing the admin
+// password), show must still succeed and fall back to the command.
+func TestShow_ArgoSecretDeleted(t *testing.T) {
+	rep, err := Show(context.Background(), clusterRunnerSecret("", "", ""), testWS(t), "/home/u", "devbox2.test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := rep.Cluster.ArgoCD; a == nil || a.Password != "" || a.PasswordCommand != argoPasswordCommand {
+		t.Fatalf("argocd = %+v", rep.Cluster.ArgoCD)
+	}
+}
+
+// With seed.password set, every account carries it so a dev logs in from show
+// alone, and the README hint is dropped.
+func TestShow_SeedPassword(t *testing.T) {
+	w := testWS(t)
+	w.Seed.Password = "seed-test-pw"
+	rep, err := Show(context.Background(), showRunner(), w, "/home/u", "devbox2.test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range rep.Accounts {
+		if a.Password != "seed-test-pw" || a.Tenant != "demotenant" {
+			t.Fatalf("account = %+v", a)
+		}
+	}
+	if rep.LoginHelp != "" {
+		t.Fatalf("loginHelp = %q with seed.password set", rep.LoginHelp)
 	}
 }

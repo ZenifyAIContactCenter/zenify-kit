@@ -444,7 +444,11 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	}
 	v.close("ready")
 	fmt.Fprintf(out, "\nready: %s\n", strings.Join(infra.EnvURLs(w, slug, domain), " "))
-	fmt.Fprintf(out, "seed login: email %s, domain %s (%s)\n", w.Seed.Accounts[0].Email, w.Seed.Tenant, w.Seed.PasswordHint)
+	pw := w.Seed.Password
+	if pw == "" {
+		pw = w.Seed.PasswordHint
+	}
+	fmt.Fprintf(out, "seed login: email %s, domain %s, password %s\n", w.Seed.Accounts[0].Email, w.Seed.Tenant, pw)
 	return nil
 }
 
@@ -642,9 +646,13 @@ func (d infraDeps) showCmd() *cobra.Command {
 			if len(rep.Accounts) > 0 {
 				tenant = rep.Accounts[0].Tenant
 			}
-			fmt.Fprintf(out, "accounts  tenant domain %s, password: %s\n", tenant, rep.LoginHelp)
+			if rep.LoginHelp != "" {
+				fmt.Fprintf(out, "accounts  tenant domain %s, password: %s\n", tenant, rep.LoginHelp)
+			} else {
+				fmt.Fprintf(out, "accounts  tenant domain %s\n", tenant)
+			}
 			for _, a := range rep.Accounts {
-				fmt.Fprintf(out, "  %-14s %s\n", a.Role, a.Email)
+				fmt.Fprintf(out, "  %-14s %-36s %s\n", a.Role, a.Email, a.Password)
 			}
 			printCluster(out, rep.Cluster)
 			return nil
@@ -677,7 +685,11 @@ func printCluster(out io.Writer, c infra.ShowCluster) {
 		if a.IngressURL != "" {
 			fmt.Fprintf(out, "              %s\n", a.IngressURL)
 		}
-		fmt.Fprintf(out, "              admin password: %s\n", a.PasswordCommand)
+		if a.Password != "" {
+			fmt.Fprintf(out, "              login: admin / %s\n", a.Password)
+		} else {
+			fmt.Fprintf(out, "              admin password: %s (initial secret deleted)\n", a.PasswordCommand)
+		}
 	}
 	if c.OpenBao != "" {
 		fmt.Fprintf(out, "  openbao     %s\n", c.OpenBao)
