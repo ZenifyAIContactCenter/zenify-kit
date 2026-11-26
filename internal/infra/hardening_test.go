@@ -91,7 +91,7 @@ func preflightMissing(t *testing.T, cmd, fix string) {
 	t.Helper()
 	p := okProbe()
 	p.cmds[cmd] = false
-	got := Preflight(p, DefaultRequirements, testPin)
+	got := Preflight(p, DefaultRequirements, testPin, ProfileCore)
 	if len(got) != 1 || got[0].Check != "tools" || !strings.Contains(got[0].Fix, fix) {
 		t.Fatalf("missing %s: %+v", cmd, got)
 	}

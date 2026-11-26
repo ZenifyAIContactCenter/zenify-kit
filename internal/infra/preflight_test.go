@@ -43,7 +43,7 @@ func (f fakeProbe) GhTokenAvailable() error             { return f.ghToken }
 func okProbe() fakeProbe {
 	return fakeProbe{
 		os: "linux", systemd: true, sudo: true,
-		mem: DefaultRequirements.MinMemBytes, disk: DefaultRequirements.MinDiskBytes,
+		mem: DefaultRequirements.MinMemBytes[ProfileFull], disk: DefaultRequirements.MinDiskBytes,
 		env:  map[string]string{"NPM_TOKEN": "x"},
 		cmds: map[string]bool{"curl": true, "git": true, "gh": true, "certutil": true, "nft": true, "resolvectl": true},
 	}
@@ -59,7 +59,9 @@ func TestPreflight(t *testing.T) {
 	}{
 		{name: "all ok", mod: func(*fakeProbe) {}},
 		{name: "darwin", mod: func(p *fakeProbe) { p.os = "darwin" }, wantCheck: "os"},
-		{name: "low memory", mod: func(p *fakeProbe) { p.mem = 1000 }, wantCheck: "memory", wantIn: []string{"6442450944", "1000"}},
+		{name: "low memory", mod: func(p *fakeProbe) { p.mem = 1000 }, wantCheck: "memory", wantIn: []string{"12884901888", "1000", "profile core"}},
+		// 8 GiB VM failed the web build with core only; 12 GiB is enough for core but not for full
+		{name: "8 GiB fails core", mod: func(p *fakeProbe) { p.mem = 8 << 30 }, wantCheck: "memory", wantIn: []string{"12884901888"}},
 		{name: "memory probe error", mod: func(p *fakeProbe) { p.memErr = errors.New("boom") }, wantCheck: "memory", wantIn: []string{"boom"}},
 		{name: "k3s wrong version", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer = true, "v1.30.0+k3s1" }, wantCheck: "k3s", wantIn: []string{"v1.30.0+k3s1", testPin}},
 		{name: "servicelb enabled", mod: func(p *fakeProbe) { p.k3sInstall, p.k3sVer = true, testPin }, wantCheck: "k3s", wantIn: []string{"--disable=servicelb"}},
@@ -92,7 +94,7 @@ func TestPreflight(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := okProbe()
 			tc.mod(&p)
-			got := Preflight(p, DefaultRequirements, testPin)
+			got := Preflight(p, DefaultRequirements, testPin, ProfileCore)
 			if tc.wantCheck == "" {
 				if len(got) != 0 {
 					t.Fatalf("want no problems, got %+v", got)
@@ -121,7 +123,7 @@ func TestPreflight_ReturnsAllInOrder(t *testing.T) {
 	p := okProbe()
 	p.os, p.mem = "darwin", 1
 	p.cmds["curl"] = false
-	got := Preflight(p, DefaultRequirements, testPin)
+	got := Preflight(p, DefaultRequirements, testPin, ProfileCore)
 	var checks []string
 	for _, pr := range got {
 		checks = append(checks, pr.Check)
@@ -157,5 +159,23 @@ func TestConfigDisablesServicelb_Errors(t *testing.T) {
 		if _, err := configDisablesServicelb([]byte(in)); err == nil {
 			t.Errorf("%q: want error", in)
 		}
+	}
+}
+
+// Evidence: a web build OOM-killed buildkitd on a 12 GiB host next to the full
+// env, so full needs 16 GiB while core passes on 12.
+func TestPreflight_MemoryFloorPerProfile(t *testing.T) {
+	p := okProbe()
+	p.mem = 12 << 30
+	if got := Preflight(p, DefaultRequirements, testPin, ProfileCore); len(got) != 0 {
+		t.Errorf("12 GiB host must pass core: %+v", got)
+	}
+	got := Preflight(p, DefaultRequirements, testPin, ProfileFull)
+	if len(got) != 1 || got[0].Check != "memory" || !strings.Contains(got[0].Detail, "17179869184") || !strings.Contains(got[0].Detail, "profile full") {
+		t.Fatalf("12 GiB host must fail full naming 16 GiB: %+v", got)
+	}
+	p.mem = 16 << 30
+	if got := Preflight(p, DefaultRequirements, testPin, ProfileFull); len(got) != 0 {
+		t.Errorf("16 GiB host must pass full: %+v", got)
 	}
 }

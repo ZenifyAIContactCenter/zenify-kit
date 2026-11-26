@@ -15,16 +15,18 @@ import (
 
 // Requirements are the minimum host resources for the local k3s devbox.
 type Requirements struct {
-	MinMemBytes  uint64
+	// MinMemBytes is the RAM floor per profile: buildkitd is OOM-killed by a
+	// web build next to the full env on less.
+	MinMemBytes  map[string]uint64
 	MinDiskBytes uint64
 	// MinDiskResumeBytes applies once k3s is installed: its images already use
 	// part of MinDiskBytes, so a re-run only needs room for new builds.
 	MinDiskResumeBytes uint64
 }
 
-// DefaultRequirements: 6 GiB RAM, 30 GiB free where /var/lib/rancher lives
+// DefaultRequirements: 12 GiB RAM for core and 16 GiB for full, 30 GiB free where /var/lib/rancher lives
 // for a fresh install, 10 GiB to re-run on an installed devbox.
-var DefaultRequirements = Requirements{MinMemBytes: 6442450944, MinDiskBytes: 32212254720, MinDiskResumeBytes: 10737418240}
+var DefaultRequirements = Requirements{MinMemBytes: map[string]uint64{ProfileCore: 12884901888, ProfileFull: 17179869184}, MinDiskBytes: 32212254720, MinDiskResumeBytes: 10737418240}
 
 // Problem is one failed preflight check with how to fix it.
 type Problem struct {
@@ -70,7 +72,8 @@ var requiredTools = []struct{ cmd, fix string }{
 
 // Preflight returns every failed check in a fixed order; empty means the host is ready.
 // wantK3s is the pinned k3s version (Task 10 passes its K3sVersion constant).
-func Preflight(h HostProbe, r Requirements, wantK3s string) []Problem {
+// profile (core or full) picks the RAM floor.
+func Preflight(h HostProbe, r Requirements, wantK3s, profile string) []Problem {
 	var ps []Problem
 	add := func(check, detail, fix string) { ps = append(ps, Problem{check, detail, fix}) }
 
@@ -86,8 +89,10 @@ func Preflight(h HostProbe, r Requirements, wantK3s string) []Problem {
 
 	if mem, err := h.MemTotalBytes(); err != nil {
 		add("memory", "cannot read total memory: "+err.Error(), "check /proc/meminfo is readable")
-	} else if mem < r.MinMemBytes {
-		add("memory", fmt.Sprintf("need %d bytes RAM, have %d", r.MinMemBytes, mem), "use a host with more memory")
+	} else if need := r.MinMemBytes[profile]; mem < need {
+		add("memory", fmt.Sprintf("profile %s needs %d bytes RAM (%d GiB; core needs %d, full needs %d), have %d",
+			profile, need, need>>30, r.MinMemBytes[ProfileCore], r.MinMemBytes[ProfileFull], mem),
+			"use a host with more memory, or run up --profile core")
 	}
 
 	ver, installed, k3sErr := h.InstalledK3sVersion()

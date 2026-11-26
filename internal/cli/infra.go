@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -31,7 +32,7 @@ type infraDeps struct {
 	workspace func() (string, bool, error)
 	runner    infra.Runner
 	builder   infra.BuildRunner
-	preflight func(ws string) []infra.Problem
+	preflight func(ws, profile string) []infra.Problem
 	// spec loads <knowledge store>/.config/infra.json for the workspace ws.
 	spec func(ws string) (infra.Workspace, error)
 	lock func(home string) (func() error, error)
@@ -82,8 +83,8 @@ func defaultInfraDeps() infraDeps {
 		},
 		runner:  infra.ExecRunner(),
 		builder: infra.ExecBuildRunner(),
-		preflight: func(string) []infra.Problem {
-			return infra.Preflight(infra.RealHostProbe(), infra.DefaultRequirements, infra.K3sVersion)
+		preflight: func(_, profile string) []infra.Problem {
+			return infra.Preflight(infra.RealHostProbe(), infra.DefaultRequirements, infra.K3sVersion, profile)
 		},
 		spec: func(ws string) (infra.Workspace, error) {
 			store := resolveDocsStore(ws, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir)
@@ -324,6 +325,13 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, pro
 			return exitcode.New(exitcode.BadArgs, fmt.Errorf("--ref: unknown repo %q (valid: %s)", repo, strings.Join(valid, ", ")))
 		}
 	}
+	if profile == "" { // the preflight RAM floor depends on it: flag, else saved state, else core
+		st, err := infra.LoadState(home)
+		if err != nil {
+			return failStep("state", err)
+		}
+		profile = st.ActiveProfile()
+	}
 	logFile, logPath, err := openRunLog(home, "up")
 	if err != nil {
 		return failStep("log", err)
@@ -350,7 +358,7 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, pro
 		}
 	}()
 	if err := v.run(ctx, "preflight", func(context.Context) (stepOutcome, error) {
-		if ps := d.preflight(ws); len(ps) > 0 {
+		if ps := d.preflight(ws, profile); len(ps) > 0 {
 			for _, p := range ps {
 				fmt.Fprintf(errW, "problem %s: %s\n  fix: %s\n", p.Check, p.Detail, p.Fix)
 			}
@@ -389,9 +397,6 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, pro
 		return err
 	}
 	domain, chartRef := tg.domain, tg.chartRef
-	if profile == "" {
-		profile = tg.state.ActiveProfile()
-	}
 	w = w.ForProfile(profile)
 	if err := v.run(ctx, "argocd", func(ctx context.Context) (stepOutcome, error) {
 		changed, err := d.installArgo(ctx, r)
@@ -509,21 +514,45 @@ type buildRow struct {
 // maxReason caps the reason shown on a failed build's line.
 const maxReason = 200
 
-// buildReason is the most useful line of a failed build's error text: the last
-// npm error / `not found` / 401 / `ERROR:` line, else the last line (buildkit
-// ends with the whole RUN command). The text is already redacted.
+// oomHint follows a buildctl connection error: buildkitd was most likely
+// OOM-killed by the build.
+const oomHint = " (buildkitd restarted? check memory: kubectl -n zenify-system get pod -l app.kubernetes.io/name=buildkitd)"
+
+// npmCodeRe matches an npm error line that carries a code or status
+// (E401, 401, 404, ERESOLVE...), not the generic log-path line.
+var npmCodeRe = regexp.MustCompile(`npm error (code )?(E[A-Z0-9]+|[0-9]{3})\b`)
+
+// buildReason is the most useful line of a failed build's error text (already
+// redacted): the last npm error line with a code, else the last line starting
+// `error:` (buildctl's own), else the last line containing `ERROR:`, else the
+// last line (buildkit ends with the whole RUN command). It is capped at 200
+// characters; a connection loss to buildkitd gets oomHint appended.
 func buildReason(err error) string {
 	ls := strings.Split(strings.TrimSpace(err.Error()), "\n")
-	pick := strings.TrimSpace(ls[len(ls)-1])
-	for i := len(ls) - 1; i >= 0; i-- {
-		l := strings.TrimSpace(ls[i])
-		if strings.Contains(l, "npm error") || strings.Contains(l, "not found") || strings.Contains(l, "401") || strings.Contains(l, "ERROR:") {
-			pick = l
-			break
+	last := func(match func(string) bool) string {
+		for i := len(ls) - 1; i >= 0; i-- {
+			if l := strings.TrimSpace(ls[i]); match(l) {
+				return l
+			}
 		}
+		return ""
 	}
+	pick := last(npmCodeRe.MatchString)
+	if pick == "" {
+		pick = last(func(l string) bool { return strings.HasPrefix(l, "error:") })
+	}
+	if pick == "" {
+		pick = last(func(l string) bool { return strings.Contains(l, "ERROR:") })
+	}
+	if pick == "" {
+		pick = strings.TrimSpace(ls[len(ls)-1])
+	}
+	lost := strings.Contains(pick, "Unavailable") || strings.HasSuffix(pick, "EOF")
 	if r := []rune(pick); len(r) > maxReason {
 		pick = string(r[:maxReason-3]) + "..."
+	}
+	if lost {
+		pick += oomHint
 	}
 	return pick
 }

@@ -60,7 +60,7 @@ func fakeInfra(t *testing.T, alreadyThere bool) (infraDeps, *[]string, *infraRun
 		workspace: func() (string, bool, error) { return "/ws", true, nil },
 		runner:    r,
 		builder:   r,
-		preflight: func(string) []infra.Problem { rec("preflight"); return nil },
+		preflight: func(string, string) []infra.Problem { rec("preflight"); return nil },
 		spec:      func(string) (infra.Workspace, error) { return testWorkspace(t), nil },
 		lock: func(string) (func() error, error) {
 			rec("lock")
@@ -179,7 +179,7 @@ func indexOf(steps []string, s string) int {
 // A host that fails preflight must stay untouched (SC-3): no k3s install.
 func TestInfraUp_PreflightProblemsStopBeforeAnyChange(t *testing.T) {
 	d, steps, _ := fakeInfra(t, false)
-	d.preflight = func(string) []infra.Problem {
+	d.preflight = func(string, string) []infra.Problem {
 		return []infra.Problem{{Check: "build-secrets", Detail: "NPM_TOKEN is not set and gh auth token failed", Fix: "export NPM_TOKEN or run: gh auth login"}}
 	}
 	_, errOut, err := runInfra(d, "up", "--local")
@@ -998,30 +998,6 @@ func TestInfraUp_AppRepoNeedsBuildOrScan(t *testing.T) {
 	}
 }
 
-// The reason on a failed build line is the real cause (the npm 401), not
-// buildkit's last line that restates the whole RUN command; capped at 200.
-func TestBuildReason_PrefersTheRealError(t *testing.T) {
-	log := "buildctl: exit status 1: #9 RUN npm ci\n" +
-		"#9 0.9 npm error code E401\n" +
-		"#9 0.9 npm error 401 Unauthorized - GET https://npm.pkg.github.com/@acme%2fcore\n" +
-		"#9 ERROR: process \"/bin/sh -c export NPM_TOKEN=[redacted] && npm ci\" did not complete successfully\n" +
-		"error: failed to solve: process \"/bin/sh -c export NPM_TOKEN=[redacted] && npm ci\" did not complete successfully"
-	want := "#9 ERROR: process \"/bin/sh -c export NPM_TOKEN=[redacted] && npm ci\" did not complete successfully"
-	if got := buildReason(errors.New(log)); got != want {
-		t.Errorf("reason = %q, want the last ERROR: line", got)
-	}
-	noErr := strings.Join(strings.Split(log, "\n")[:3], "\n")
-	if got := buildReason(errors.New(noErr)); !strings.Contains(got, "npm error 401 Unauthorized") {
-		t.Errorf("reason = %q, want the 401 line", got)
-	}
-	if got := buildReason(errors.New("a\nplain last line")); got != "plain last line" {
-		t.Errorf("reason = %q, want the last line when nothing matches", got)
-	}
-	long := "npm error " + strings.Repeat("x", 400)
-	if got := buildReason(errors.New(long)); len([]rune(got)) != 200 || !strings.HasSuffix(got, "...") {
-		t.Errorf("reason len %d, want 200 ending in ...", len([]rune(got)))
-	}
-}
 
 // Config refresh (task 19b): before phase 2 the env's Applications are
 // hard-refreshed and the seed app is synced (also when phase 1 is skipped);
@@ -1066,5 +1042,64 @@ func TestInfraUp_RefreshesAndSyncsSeedBeforePhase2(t *testing.T) {
 	_, _, err := runInfra(d, "up", "--local")
 	if err == nil || !strings.Contains(err.Error(), "hook job failed") || indexOf(*steps, "apply phase 2") >= 0 {
 		t.Fatalf("err=%v steps=%v", err, *steps)
+	}
+}
+
+// The RAM floor is the active profile's, so the profile is resolved (flag,
+// else saved state, else core) before preflight runs.
+func TestInfraUp_PreflightGetsResolvedProfile(t *testing.T) {
+	for _, c := range []struct {
+		saved string
+		args  []string
+		want  string
+	}{{"", nil, "core"}, {"full", nil, "full"}, {"full", []string{"--profile", "core"}, "core"}, {"", []string{"--profile", "full"}, "full"}} {
+		d, _, _ := fakeInfra(t, true)
+		home, _ := d.home()
+		if c.saved != "" {
+			if err := infra.SaveState(home, &infra.State{Profile: c.saved}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got := ""
+		d.preflight = func(_, profile string) []infra.Problem { got = profile; return nil }
+		if _, _, err := runInfra(d, append([]string{"up", "--local"}, c.args...)...); err != nil {
+			t.Fatal(err)
+		}
+		if got != c.want {
+			t.Errorf("saved %q args %v: preflight profile = %q, want %q", c.saved, c.args, got, c.want)
+		}
+	}
+}
+
+// The reason line is the real cause, in priority order: npm error with a code,
+// buildctl's own `error:` line, an ERROR: line, the last line; a harmless
+// `git: not found` warning never wins.
+func TestBuildReason_Priority(t *testing.T) {
+	cases := []struct{ name, log, want string }{
+		{"npm error with code beats later error:",
+			"#9 npm error code E401\n#9 npm error 401 Unauthorized - GET https://npm.pkg.github.com/x\n#9 npm error A complete log of this run can be found in: /root/.npm/_logs\nerror: failed to solve: x",
+			"#9 npm error 401 Unauthorized - GET https://npm.pkg.github.com/x"},
+		{"npm error without a code is not preferred",
+			"#9 npm error A complete log of this run can be found in: /root\n#9 ERROR: process did not complete\nerror: failed to solve: process did not complete",
+			"error: failed to solve: process did not complete"},
+		{"buildctl error: beats ERROR:",
+			"#5 ERROR: process \"/bin/sh -c run\" did not complete\nerror: failed to solve: boom\ntrailing line",
+			"error: failed to solve: boom"},
+		{"ERROR: beats the last line", "#5 ERROR: step died\nsome trailing line", "#5 ERROR: step died"},
+		{"last line when nothing matches", "a\nplain last line", "plain last line"},
+		{"base image not found arrives as error:", "#1 resolve\nerror: failed to solve: node:99: not found", "error: failed to solve: node:99: not found"},
+		{"git warning does not win over the EOF",
+			"/bin/sh: git: not found\nerror: failed to receive status: rpc error: code = Unavailable desc = error reading from server: EOF",
+			"error: failed to receive status: rpc error: code = Unavailable desc = error reading from server: EOF" + oomHint},
+	}
+	for _, c := range cases {
+		if got := buildReason(errors.New(c.log)); got != c.want {
+			t.Errorf("%s: reason = %q, want %q", c.name, got, c.want)
+		}
+	}
+	long := "error: failed to receive status: " + strings.Repeat("x", 300) + " Unavailable EOF"
+	got := buildReason(errors.New(long))
+	if !strings.HasSuffix(got, oomHint) || len([]rune(strings.TrimSuffix(got, oomHint))) != 200 {
+		t.Errorf("cap: hint kept, original part 200 runes; got len %d", len([]rune(got)))
 	}
 }
