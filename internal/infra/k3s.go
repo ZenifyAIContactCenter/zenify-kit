@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"os/user"
 	"slices"
 	"strings"
 	"text/template"
@@ -59,8 +60,28 @@ type hostFile struct {
 	apply       int
 }
 
+// kubeconfigGroup is the primary group of the user running the kit: k3s
+// writes its admin kubeconfig 0640 to that group so kubectl works without
+// making the file world-readable.
+var kubeconfigGroup = func() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("current user: %w", err)
+	}
+	g, err := user.LookupGroupId(u.Gid)
+	if err != nil {
+		return "", fmt.Errorf("primary group of %s: %w", u.Username, err)
+	}
+	return g.Name, nil
+}
+
 func (f hostFile) render() ([]byte, error) {
+	group, err := kubeconfigGroup()
+	if err != nil {
+		return nil, fmt.Errorf("render %s: %w", f.asset, err)
+	}
 	return renderAsset(f.asset, map[string]string{
+		"KubeconfigGroup":   group,
 		"TraefikClusterIP":  TraefikClusterIP,
 		"RegistryHost":      RegistryHost,
 		"RegistryClusterIP": RegistryClusterIP,
@@ -137,6 +158,14 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		} {
 			if _, err := r.Run(ctx, nil, "sudo", args...); err != nil {
 				return changed, fmt.Errorf("install k3s: firewall: %v: %w", args, err)
+			}
+		}
+		// k3s.service requires the firewall unit, so restarting it restarts k3s
+		if v, err := installedK3s(ctx, r); err != nil {
+			return changed, fmt.Errorf("install k3s: %w", err)
+		} else if v != "" {
+			if err := waitNodeReady(ctx, r); err != nil {
+				return changed, fmt.Errorf("install k3s: after firewall restart: %w", err)
 			}
 		}
 	}

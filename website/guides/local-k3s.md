@@ -9,9 +9,11 @@ title: Devbox k3s cục bộ
 ## Trước khi chạy
 
 - `gh auth login` xong: token của `gh` dùng để ArgoCD đọc repo helm và làm `NPM_TOKEN` khi build.
-- Có `curl`, `git`, `gh`, `certutil` (gói `libnss3-tools`), tối thiểu 6 GiB RAM và 30 GiB trống cho `/var/lib/rancher`.
+- Có `curl`, `git`, `gh`, `certutil` (gói `libnss3-tools`), `nft` (gói `nftables`), `resolvectl` (systemd-resolved), tối thiểu 6 GiB RAM và 30 GiB trống cho `/var/lib/rancher`.
 
 Thiếu điều kiện nào, [`zenify infra up --local`](/reference/cli/zenify_infra_up) in hết các vấn đề kèm cách sửa và dừng trước khi đổi gì trên máy.
+
+Kubeconfig admin của k3s (`/etc/rancher/k3s/k3s.yaml`) có quyền `0640`, chỉ root và group chính của bạn đọc được; mọi lệnh `kubectl` của kit dùng file này, không dùng context mặc định của bạn.
 
 ## Dựng và kiểm tra
 

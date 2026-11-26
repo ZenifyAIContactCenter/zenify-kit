@@ -53,7 +53,17 @@ type exitErr int
 func (e exitErr) Error() string { return "exit status" }
 func (e exitErr) ExitCode() int { return int(e) }
 
-// hostFiles fakes `sudo test -f` / `sudo cat` over an in-memory file map.
+// isFileProbe matches readRootFile's existence probe; it returns the path.
+func isProbe(c call) bool { _, ok := isFileProbe(c); return ok }
+
+func isFileProbe(c call) (string, bool) {
+	if c.name == "sudo" && len(c.args) == 6 && c.args[0] == "-n" && c.args[1] == "sh" && c.args[2] == "-c" {
+		return c.args[5], true
+	}
+	return "", false
+}
+
+// hostFiles fakes readRootFile's probe / `sudo cat` over an in-memory file map.
 func hostFiles(files map[string]string, k3sVersion string) func(call) ([]byte, error) {
 	return func(c call) ([]byte, error) {
 		switch {
@@ -62,11 +72,12 @@ func hostFiles(files map[string]string, k3sVersion string) func(call) ([]byte, e
 				return nil, exec.ErrNotFound
 			}
 			return []byte("k3s version " + k3sVersion + " (abc)\ngo version go1.26\n"), nil
-		case c.name == "sudo" && c.args[0] == "test":
-			if _, ok := files[c.args[2]]; ok {
+		case isProbe(c):
+			p, _ := isFileProbe(c)
+			if _, ok := files[p]; ok {
 				return nil, nil
 			}
-			return nil, exitErr(1)
+			return nil, exitErr(rootFileAbsent)
 		case c.name == "sudo" && c.args[0] == "cat":
 			return []byte(files[c.args[1]]), nil
 		case c.name == "kubectl" && len(c.args) > 2 && c.args[2] == "get" && c.args[3] == "nodes":

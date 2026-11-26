@@ -45,7 +45,7 @@ func okProbe() fakeProbe {
 		os: "linux", systemd: true, sudo: true,
 		mem: DefaultRequirements.MinMemBytes, disk: DefaultRequirements.MinDiskBytes,
 		env:  map[string]string{"NPM_TOKEN": "x"},
-		cmds: map[string]bool{"curl": true, "git": true, "gh": true, "certutil": true},
+		cmds: map[string]bool{"curl": true, "git": true, "gh": true, "certutil": true, "nft": true, "resolvectl": true},
 	}
 }
 

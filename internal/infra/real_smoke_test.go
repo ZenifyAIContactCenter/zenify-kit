@@ -18,7 +18,7 @@ func TestRealInstall(t *testing.T) {
 	}
 	domain, ref := os.Getenv("ZNF_INFRA_DOMAIN"), os.Getenv("ZNF_INFRA_CHART_REF")
 	if domain == "" {
-		domain = "quyentm.test"
+		domain = DefaultDomain
 	}
 	if ref == "" {
 		ref = "main"
@@ -65,7 +65,7 @@ func TestRealBuild(t *testing.T) {
 	}
 	ws, domain := os.Getenv("ZNF_INFRA_WS"), os.Getenv("ZNF_INFRA_DOMAIN")
 	if domain == "" {
-		domain = "quyentm.test"
+		domain = DefaultDomain
 	}
 	ts, err := CoreTargets(ws, domain, BaseSlug)
 	if err != nil {

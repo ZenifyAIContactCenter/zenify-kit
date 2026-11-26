@@ -146,8 +146,9 @@ func BuildFromBase(ctx context.Context, r BuildRunner, ws string, t BuildTarget,
 }
 
 // BaseSource fetches repo and checks out ref (empty = the repo's baseRef) as a
-// detached temporary worktree under ~/.zenify/infra/src. cleanup removes that
-// worktree only; the user's checkouts and worktrees are never touched.
+// detached temporary worktree under ~/.zenify/infra/src. Only that kit-owned
+// path is ever removed (no global prune), so the user's checkouts and
+// worktrees, and their admin entries, are never touched.
 func BaseSource(ctx context.Context, r Runner, ws, repo, ref string) (dir, sha string, cleanup func() error, err error) {
 	root := filepath.Join(ws, "repos", repo)
 	if ref == "" {
@@ -183,19 +184,50 @@ func BaseSource(ctx context.Context, r Runner, ws, repo, ref string) (dir, sha s
 		}
 		return nil
 	}
-	// drop admin entries of temp worktrees whose dir is gone, so add below does not trip on one
-	if _, err := r.Run(ctx, nil, "git", "-C", root, "worktree", "prune"); err != nil {
-		return "", "", nil, fmt.Errorf("base source %s: worktree prune: %w", repo, err)
+	// a run interrupted before cleanup leaves this dir and/or its admin entry
+	list, err := r.Run(ctx, nil, "git", "-C", root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return "", "", nil, fmt.Errorf("base source %s: worktree list: %w", repo, err)
 	}
-	if _, err := os.Stat(dir); err == nil { //nolint:gosec // G703 -- dir is the kit's src dir + a repo literal + rev-parse hex (checked above); left by an interrupted run
+	listed := worktreeListed(list, dir)
+	_, statErr := os.Stat(dir) //nolint:gosec // G703 -- dir is the kit's src dir + a repo literal + rev-parse hex (checked above)
+	exists := statErr == nil
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return "", "", nil, fmt.Errorf("base source %s: stat %s: %w", repo, dir, statErr)
+	}
+	switch {
+	case listed && exists:
 		if err := remove(); err != nil {
 			return "", "", nil, err
 		}
+	case exists: // a kit-owned dir git no longer knows
+		if err := os.RemoveAll(dir); err != nil { //nolint:gosec // G703 -- dir is the kit src dir + a repo literal + rev-parse hex (checked above)
+			return "", "", nil, fmt.Errorf("base source %s: remove stale %s: %w", repo, dir, err)
+		}
 	}
-	if _, err := r.Run(ctx, nil, "git", "-C", root, "worktree", "add", "--detach", dir, sha); err != nil {
+	add := []string{"-C", root, "worktree", "add", "--detach", dir, sha}
+	if listed && !exists {
+		// registered but deleted: --force reuses this one entry instead of a global prune
+		add = []string{"-C", root, "worktree", "add", "--force", "--detach", dir, sha}
+	}
+	if _, err := r.Run(ctx, nil, "git", add...); err != nil {
 		return "", "", nil, fmt.Errorf("base source %s: add temp worktree %s: %w", repo, dir, err)
 	}
 	return dir, sha, remove, nil
+}
+
+// worktreeListed reports whether `git worktree list --porcelain` output names dir.
+func worktreeListed(porcelain []byte, dir string) bool {
+	want := map[string]bool{dir: true}
+	if real, err := filepath.EvalSymlinks(filepath.Dir(dir)); err == nil {
+		want[filepath.Join(real, filepath.Base(dir))] = true
+	}
+	for _, line := range strings.Split(string(porcelain), "\n") {
+		if p, ok := strings.CutPrefix(line, "worktree "); ok && want[p] {
+			return true
+		}
+	}
+	return false
 }
 
 // registryURL is the registry as the host reaches it: its ClusterIP directly.

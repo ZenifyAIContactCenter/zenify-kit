@@ -60,6 +60,8 @@ var requiredTools = []struct{ cmd, fix string }{
 	{"git", "sudo apt install -y git"},
 	{"gh", "install GitHub CLI (https://cli.github.com), then run: gh auth login"},
 	{"certutil", "sudo apt install -y libnss3-tools"},
+	{"nft", "sudo apt install -y nftables"},
+	{"resolvectl", "enable systemd-resolved: sudo apt install -y systemd-resolved"},
 }
 
 // Preflight returns every failed check in a fixed order; empty means the host is ready.

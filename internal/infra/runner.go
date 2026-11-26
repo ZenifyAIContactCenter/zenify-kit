@@ -118,10 +118,15 @@ func exitCode(err error) int {
 	return -1
 }
 
+// rootFileAbsent is the exit code the existence probe uses for "no such
+// file": sudo itself exits 1 on its own failures, so 1 cannot mean absent.
+const rootFileAbsent = 3
+
 // readRootFile reads a root-owned file; exists is false when it is absent.
+// Any other probe failure (sudo refused, sh missing) is an error.
 func readRootFile(ctx context.Context, r Runner, p string) (data []byte, exists bool, err error) {
-	if _, err := r.Run(ctx, nil, "sudo", "test", "-f", p); err != nil {
-		if exitCode(err) == 1 {
+	if _, err := r.Run(ctx, nil, "sudo", "-n", "sh", "-c", `test -f "$1" || exit 3`, "sh", p); err != nil {
+		if exitCode(err) == rootFileAbsent {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("check %s: %w", p, err)
