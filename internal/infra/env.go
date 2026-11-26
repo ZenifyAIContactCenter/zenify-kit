@@ -10,25 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ProfileCore is the env profile with the core apps (be, hub, web) only.
-const ProfileCore = "core"
-
-// envApps are the child apps of a core env, in phase order: phase 1 brings
-// the datastores and the seed up, phase 2 the apps (the seed runs --if-empty
-// and refuses once an app created its collections).
-// The app-of-apps key of an app is also its repo; svc is its host prefix.
-var envApps = []struct {
-	name  string
-	phase int
-	svc   string
-}{
-	{"mongo", 1, ""}, {"mysql", 1, ""}, {"redis", 1, ""}, {"local-env", 1, ""},
-	{"contact-center-be", 2, "be"}, {"contact-center-hub", 2, "hub"}, {"contact-center-web", 2, "web"},
-}
-
-// SeedRepo is the repo whose image seeds an env's databases.
-const SeedRepo = "zenify-data-seed"
-
 var slugRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`)
 
 // EnvAppName is the root Application of the env slug.
@@ -41,82 +22,104 @@ func EnvNamespace(slug string) string { return "env-" + slug }
 func ChildAppName(app, slug string) string { return app + "-" + slug + "-local" }
 
 // ChildApps lists the child Application names of env slug enabled up to phase.
-func ChildApps(slug string, phase int) []string {
+func ChildApps(w Workspace, slug string, phase int) []string {
 	var out []string
-	for _, a := range envApps {
-		if a.phase <= phase {
-			out = append(out, ChildAppName(a.name, slug))
+	for _, a := range w.EnvApps {
+		if a.Phase <= phase {
+			out = append(out, ChildAppName(a.Key, slug))
 		}
 	}
 	return out
 }
 
-// AppsProbe is the child Application whose presence means phase 2 already ran.
-func AppsProbe(slug string) string { return ChildAppName("contact-center-be", slug) }
-
-// EnvURLs are the browser URLs of env slug: web, be, hub.
-func EnvURLs(slug, domain string) []string {
-	return []string{
-		"https://" + Host("web", slug, domain),
-		"https://" + Host("be", slug, domain),
-		"https://" + Host("hub", slug, domain),
+// PhaseTwoApps are the child Applications that exist only once phase 2 ran.
+func PhaseTwoApps(w Workspace, slug string) []string {
+	var out []string
+	for _, a := range w.EnvApps {
+		if a.Phase == 2 {
+			out = append(out, ChildAppName(a.Key, slug))
+		}
 	}
+	return out
 }
 
-func ingressHosts(host, path string) []any {
-	return []any{map[string]any{
-		"host":  host,
-		"paths": []any{map[string]any{"path": path, "pathType": "Prefix"}},
-	}}
+// EnvURLs are the browser URLs of env slug, one per app with a host prefix.
+func EnvURLs(w Workspace, slug, domain string) []string {
+	var out []string
+	for _, a := range w.svcApps() {
+		out = append(out, "https://"+Host(a.Svc, slug, domain))
+	}
+	return out
 }
 
-// appValues returns the charts/app values the kit owns for app (helm
-// envs/local/<app>.yaml headers): the image tag and the ingress hosts.
-func appValues(app, slug, domain string, images map[string]string) (map[string]any, error) {
-	if app == "local-env" {
-		tag := images[SeedRepo]
+// setDotted sets m[k1][k2]...=v for key "k1.k2...", creating maps on the way.
+func setDotted(m map[string]any, key string, v any) error {
+	parts := strings.Split(key, ".")
+	for i, p := range parts[:len(parts)-1] {
+		next, ok := m[p]
+		if !ok {
+			nm := map[string]any{}
+			m[p] = nm
+			m = nm
+			continue
+		}
+		nm, ok := next.(map[string]any)
+		if !ok {
+			return fmt.Errorf("values key %s: %s is not a map", key, strings.Join(parts[:i+1], "."))
+		}
+		m = nm
+	}
+	last := parts[len(parts)-1]
+	if _, dup := m[last]; dup {
+		return fmt.Errorf("values key %s set twice", key)
+	}
+	m[last] = v
+	return nil
+}
+
+// appValues returns the values the kit owns for app a: for the seed app its
+// slug, domain and seed.tag; for an app with an image its image.tag and the
+// ingress hosts lists; nothing for a datastore.
+func appValues(w Workspace, a WorkspaceApp, slug, domain string, images map[string]string) (map[string]any, error) {
+	if a.Seed {
+		tag := images[w.Seed.Repo]
 		if tag == "" {
-			return nil, fmt.Errorf("no image tag for %s", SeedRepo)
+			return nil, fmt.Errorf("no image tag for %s", w.Seed.Repo)
 		}
 		return map[string]any{"slug": slug, "domain": domain, "seed": map[string]any{"tag": tag}}, nil
 	}
-	var apps map[string]any
-	switch app {
-	case "contact-center-be":
-		apps = map[string]any{"api": map[string]any{"ingress": map[string]any{"hosts": ingressHosts(Host("be", slug, domain), "/")}}}
-	case "contact-center-hub":
-		hub := Host("hub", slug, domain)
-		apps = map[string]any{
-			"hub":  map[string]any{"ingress": map[string]any{"hosts": ingressHosts(hub, "/")}},
-			"auth": map[string]any{"ingress": map[string]any{"hosts": ingressHosts(hub, "/auth")}},
-		}
-	case "contact-center-web":
-		apps = map[string]any{"contact-center-web": map[string]any{"ingress": map[string]any{"hosts": ingressHosts(Host("web", slug, domain), "/")}}}
-	default:
-		return nil, nil // datastores take no kit values
+	if a.Repo == "" {
+		return nil, nil
 	}
-	tag := images[app]
+	tag := images[a.Repo]
 	if tag == "" {
-		return nil, fmt.Errorf("no image tag for %s", app)
+		return nil, fmt.Errorf("no image tag for %s", a.Repo)
 	}
-	return map[string]any{"image": map[string]any{"tag": tag}, "apps": apps}, nil
+	v := map[string]any{"image": map[string]any{"tag": tag}}
+	for _, in := range a.Ingress {
+		hosts := []any{map[string]any{
+			"host":  Host(a.Svc, slug, domain),
+			"paths": []any{map[string]any{"path": in.Path, "pathType": "Prefix"}},
+		}}
+		if err := setDotted(v, in.Values, hosts); err != nil {
+			return nil, fmt.Errorf("%s: %w", a.Key, err)
+		}
+	}
+	return v, nil
 }
 
 // RenderEnvApp renders the root Application env-<slug> (charts/app-of-apps
-// over envs/local/map.yaml). images maps a repo name to its image tag. Phase 1
-// enables mongo, mysql, redis and local-env only; phase 2 enables the apps too.
-func RenderEnvApp(slug, domain, chartRef string, images map[string]string, profile string, phase int) ([]byte, error) {
-	if profile != ProfileCore {
-		return nil, fmt.Errorf("env app: unknown profile %q (supported: %s)", profile, ProfileCore)
-	}
+// over envs/local/map.yaml). images maps a build repo to its image tag. Phase 1
+// enables only the phase-1 apps (datastores and the seed); phase 2 all.
+func RenderEnvApp(w Workspace, slug, domain, chartRef string, images map[string]string, phase int) ([]byte, error) {
 	if phase != 1 && phase != 2 {
 		return nil, fmt.Errorf("env app: phase %d, want 1 or 2", phase)
 	}
 	if !slugRe.MatchString(slug) {
 		return nil, fmt.Errorf("env app: invalid slug %q", slug)
 	}
-	if len(domain) > 253 || !domainRe.MatchString(domain) {
-		return nil, fmt.Errorf("env app: invalid domain %q", domain)
+	if err := validDomainName(domain); err != nil {
+		return nil, fmt.Errorf("env app: %w", err)
 	}
 	if chartRef == "" {
 		return nil, fmt.Errorf("env app: chartRef is required")
@@ -125,12 +128,12 @@ func RenderEnvApp(slug, domain, chartRef string, images map[string]string, profi
 		"env":    "local",
 		"global": map[string]any{"targetRevision": chartRef},
 	}
-	for _, a := range envApps {
-		entry := map[string]any{"name": a.name + "-" + slug, "namespace": EnvNamespace(slug)}
-		if a.phase > phase {
+	for _, a := range w.EnvApps {
+		entry := map[string]any{"name": a.Key + "-" + slug, "namespace": EnvNamespace(slug)}
+		if a.Phase > phase {
 			entry["enabled"] = false
 		} else {
-			v, err := appValues(a.name, slug, domain, images)
+			v, err := appValues(w, a, slug, domain, images)
 			if err != nil {
 				return nil, fmt.Errorf("env app: %w", err)
 			}
@@ -138,7 +141,7 @@ func RenderEnvApp(slug, domain, chartRef string, images map[string]string, profi
 				entry["values"] = v
 			}
 		}
-		vals[a.name] = entry
+		vals[a.Key] = entry
 	}
 	app := map[string]any{
 		"apiVersion": "argoproj.io/v1alpha1",
@@ -151,7 +154,7 @@ func RenderEnvApp(slug, domain, chartRef string, images map[string]string, profi
 		"spec": map[string]any{
 			"project": "default",
 			"source": map[string]any{
-				"repoURL":        HelmRepoURL,
+				"repoURL":        w.HelmRepoURL,
 				"path":           "charts/app-of-apps",
 				"targetRevision": chartRef,
 				"helm": map[string]any{
@@ -175,6 +178,42 @@ func RenderEnvApp(slug, domain, chartRef string, images map[string]string, profi
 		return nil, fmt.Errorf("env app: encode: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// EnvCAConfigMap is the ConfigMap (key ca.crt) the env charts mount to trust
+// the local CA.
+const EnvCAConfigMap = "local-ca"
+
+// ApplyEnvCA creates or updates namespace env-<slug> and ConfigMap local-ca
+// (key ca.crt) holding the local CA's public PEM, by server-side apply.
+func ApplyEnvCA(ctx context.Context, r Runner, slug string, caPEM []byte) error {
+	if !slugRe.MatchString(slug) {
+		return fmt.Errorf("env ca: invalid slug %q", slug)
+	}
+	crt, err := validateCA(caPEM)
+	if err != nil {
+		return fmt.Errorf("env ca: %w", err)
+	}
+	ns := EnvNamespace(slug)
+	docs := []map[string]any{
+		{"apiVersion": "v1", "kind": "Namespace", "metadata": map[string]any{"name": ns}},
+		{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"name": EnvCAConfigMap, "namespace": ns},
+			"data": map[string]any{caSecretKey: string(crt)}},
+	}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	for _, d := range docs {
+		if err := enc.Encode(d); err != nil {
+			return fmt.Errorf("env ca: encode: %w", err)
+		}
+	}
+	if err := enc.Close(); err != nil {
+		return fmt.Errorf("env ca: encode: %w", err)
+	}
+	if _, err := kubectl(ctx, r, &buf, "apply", "--server-side", "--field-manager=zenify", "-f", "-"); err != nil {
+		return fmt.Errorf("env ca: apply %s/%s: %w", ns, EnvCAConfigMap, err)
+	}
+	return nil
 }
 
 // Apply runs `kubectl apply -f -` on manifest; changed is false when kubectl

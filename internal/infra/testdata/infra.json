@@ -1,0 +1,37 @@
+{
+  "helmRepoURL": "https://git.example.test/team/charts.git",
+  "builds": [
+    {"repo": "ui-base", "context": "stacks/ui", "dockerfile": "base.Dockerfile", "image": "team/base-ui", "tag": "2.0",
+     "args": {"VERSION": "2.0"}},
+    {"repo": "shop-api", "context": ".", "dockerfile": "Dockerfile", "target": "api", "image": "shop-api/api",
+     "secrets": ["npm_token"]},
+    {"repo": "shop-gateway", "context": ".", "dockerfile": "Dockerfile", "image": "shop-gateway",
+     "secrets": ["npm_token"], "optionalSecrets": ["npm_extra_token"]},
+    {"repo": "shop-web", "context": ".", "dockerfile": "Dockerfile", "image": "shop-web",
+     "args": {"BUILD_MODE": "preview", "BASE_TAG": "2.0"},
+     "envArgs": {"PREVIEW_SLUG": "slug", "PREVIEW_DOMAIN": "domain", "REGISTRY": "registry", "PREVIEW_BARE_HOSTS": "baseOnly"},
+     "secrets": ["npm_token"]},
+    {"repo": "demo-seed", "context": ".", "dockerfile": "Dockerfile", "image": "demo-seed"}
+  ],
+  "envApps": [
+    {"key": "mongo", "phase": 1},
+    {"key": "mysql", "phase": 1},
+    {"key": "redis", "phase": 1},
+    {"key": "app-config", "phase": 1, "seed": true},
+    {"key": "shop-api", "phase": 2, "repo": "shop-api", "svc": "be",
+     "ingress": [{"values": "apps.api.ingress.hosts", "path": "/"}]},
+    {"key": "shop-gateway", "phase": 2, "repo": "shop-gateway", "svc": "hub",
+     "ingress": [{"values": "apps.hub.ingress.hosts", "path": "/"}, {"values": "apps.auth.ingress.hosts", "path": "/auth"}]},
+    {"key": "shop-web", "phase": 2, "repo": "shop-web", "svc": "web",
+     "ingress": [{"values": "apps.shop-web.ingress.hosts", "path": "/"}]}
+  ],
+  "seed": {
+    "repo": "demo-seed",
+    "tenant": "demotenant",
+    "passwordHint": "see the demo-seed README",
+    "accounts": [
+      {"role": "administrator", "email": "admin@demo.example"},
+      {"role": "agent", "email": "agent-01@demo.example"}
+    ]
+  }
+}

@@ -23,13 +23,3 @@ const (
 	// BuildkitVersion is the pinned buildkit release.
 	BuildkitVersion = "v0.34.2"
 )
-
-// SeedTenant is the tenant domain zenify-data-seed restores into every env.
-const SeedTenant = "zenifytest"
-
-// SeedAccounts are seeded logins by role (zenify-data-seed README "Preview
-// environment" and data/mongo/main/users.jsonl). Passwords are never kept here.
-var SeedAccounts = []SeedAccount{
-	{Role: "administrator", Email: "admin@zenifytest.vn", Tenant: SeedTenant},
-	{Role: "agent", Email: "agent-01@zenifytest.zenify.local", Tenant: SeedTenant},
-}

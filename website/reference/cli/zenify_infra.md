@@ -6,7 +6,7 @@ title: zenify infra
 
 # `zenify infra`
 
-Dựng và quản lý devbox k3s cục bộ (k3s, ArgoCD, platform, env `base`) trên một máy Linux.
+Dựng và quản lý devbox k3s cục bộ (k3s, ArgoCD, platform, env `base`) trên một máy Linux, theo cấu hình `infra.json` của workspace.
 
 ## Cú pháp
 
@@ -16,11 +16,22 @@ zenify infra
 
 ## Khi nào dùng
 
-Khi bạn muốn chạy contact-center trên chính devbox Linux của mình: một cluster k3s riêng, ArgoCD, chart `local-platform` (registry, buildkitd, DNS, CA nội bộ) và env `base` với mongo, mysql, redis, `contact-center-be`, `contact-center-hub`, `contact-center-web`. Mọi lệnh con bắt buộc có `--local`; thiếu cờ này lệnh thoát mã 2 với `only --local is supported`.
+Khi bạn muốn chạy stack của workspace trên chính devbox Linux của mình: một cluster k3s riêng, ArgoCD, chart `local-platform` (registry, buildkitd, DNS, CA nội bộ) và env `base` gồm các app mà `infra.json` khai báo. Mọi lệnh con bắt buộc có `--local`; thiếu cờ này lệnh thoát mã 2 với `only --local is supported`.
 
 ## Kết quả
 
-`zenify infra up --local` cài hoặc tiếp tục cài, `zenify infra status --local` đọc trạng thái, `zenify infra show --local` in URL, image tag và tài khoản seed của từng env, `zenify infra down --local` gỡ (mặc định chỉ preview), `zenify infra config --local` xem hoặc đặt domain và số env tối đa. Mọi lệnh `kubectl` đều chạy với `--kubeconfig /etc/rancher/k3s/k3s.yaml`, không bao giờ dùng context mặc định của bạn.
+`zenify infra up --local` cài hoặc tiếp tục cài, `zenify infra status --local` đọc trạng thái, `zenify infra show --local` in URL, image tag và tài khoản seed của từng env, `zenify infra down --local` gỡ (mặc định chỉ preview), `zenify infra config --local` xem hoặc đặt domain và số env tối đa. Mọi lệnh `kubectl` đều chạy với `--kubeconfig /etc/rancher/k3s/k3s.yaml`, không bao giờ dùng context mặc định của bạn. Hai lần `up`/`down --apply` không chạy cùng lúc: lần sau dừng với lỗi nêu file khoá `~/.zenify/infra/infra.lock`.
+
+## File `infra.json`
+
+Binary của kit công khai nên không chứa repo, image hay tài khoản nào của workspace. `up`, `status` và `show` đọc chúng từ `<knowledge store>/.config/infra.json` (cùng chỗ với `gate-participants.json`); thiếu file hoặc thiếu trường thì lệnh dừng, nêu đường dẫn file và các trường còn thiếu, không có giá trị mặc định nào trong binary.
+
+| Trường | Ý nghĩa |
+|---|---|
+| `helmRepoURL` | Repo git chứa `charts/local-platform`, `charts/app-of-apps` và `envs/`. |
+| `builds[]` | Image build theo thứ tự (image gốc trước image `FROM` nó): `repo`, `context`, `dockerfile`, `target` (tuỳ chọn), `image` (đường dẫn dưới registry nội bộ), `tag` (cố định, bỏ trống thì `sha-<commit>`), `args`, `envArgs` (build arg đổi theo env, giá trị là một biến `slug`, `domain`, `registry` hoặc `baseOnly` = `1` cho env `base`, `0` cho env khác; các arg này vào tag image), `secrets` (bắt buộc), `optionalSecrets` (chỉ truyền khi có). |
+| `envApps[]` | Key app-of-apps của env theo thứ tự: `key` (không bắt đầu bằng `env-`), `phase` (`1` datastore và seed, `2` app), `repo` (build có `image.tag`), `svc` (tiền tố host), `ingress[]` (`values` là key values dạng chấm, `path` là đường dẫn URL), `seed: true` cho đúng một app nhận `slug`, `domain`, `seed.tag`. |
+| `seed` | `repo` (build image seed), `tenant`, `passwordHint` (chỗ ghi mật khẩu, không bao giờ là mật khẩu), `accounts[]` (`role`, `email`). |
 
 ## Ví dụ
 

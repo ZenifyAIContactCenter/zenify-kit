@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -29,26 +30,30 @@ type infraDeps struct {
 	runner    infra.Runner
 	builder   infra.BuildRunner
 	preflight func(ws string) []infra.Problem
+	// spec loads <knowledge store>/.config/infra.json for the workspace ws.
+	spec func(ws string) (infra.Workspace, error)
+	lock func(home string) (func() error, error)
 
 	installK3s     func(ctx context.Context, r infra.Runner) (bool, error)
 	installArgo    func(ctx context.Context, r infra.Runner) (bool, error)
-	setRepoCred    func(ctx context.Context, r infra.Runner, token string) error
-	applyPlatform  func(ctx context.Context, r infra.Runner, domain, chartRef string) error
+	setRepoCred    func(ctx context.Context, r infra.Runner, repoURL, token string) error
+	applyPlatform  func(ctx context.Context, r infra.Runner, repoURL, domain, chartRef string) error
 	waitApp        func(ctx context.Context, r infra.Runner, name string, timeout time.Duration) error
 	fetchCA        func(ctx context.Context, r infra.Runner) ([]byte, error)
 	installCA      func(ctx context.Context, r infra.Runner, home string, pem []byte) (bool, error)
 	splitDNS       func(ctx context.Context, r infra.Runner, domain string) (bool, error)
 	restartDNS     func(ctx context.Context, r infra.Runner) error
 	ensureBuildctl func(ctx context.Context, r infra.Runner, home string) (string, error)
-	coreTargets    func(ws, domain, slug string) ([]infra.BuildTarget, error)
+	coreTargets    func(w infra.Workspace, ws, domain, slug string) ([]infra.BuildTarget, error)
 	build          func(ctx context.Context, br infra.BuildRunner, ws string, t infra.BuildTarget, refs map[string]string) (infra.BuildResult, error)
 	apply          func(ctx context.Context, r infra.Runner, manifest []byte) (bool, error)
 	appExists      func(ctx context.Context, r infra.Runner, name string) (bool, error)
+	applyEnvCA     func(ctx context.Context, r infra.Runner, slug string, pem []byte) error
 	saveState      func(home string, s *infra.State) error
 	livePlatform   func(ctx context.Context, r infra.Runner) (infra.PlatformTarget, bool, error)
 
-	status          func(ctx context.Context, r infra.Runner, home, domain string) (infra.Report, error)
-	show            func(ctx context.Context, r infra.Runner, home, domain, slug string) (infra.ShowReport, error)
+	status          func(ctx context.Context, r infra.Runner, w infra.Workspace, home, domain string) (infra.Report, error)
+	show            func(ctx context.Context, r infra.Runner, w infra.Workspace, home, domain, slug string) (infra.ShowReport, error)
 	removeTrust     func(ctx context.Context, r infra.Runner, home string) error
 	uninstallK3s    func(ctx context.Context, r infra.Runner) error
 	removeState     func(home string) error
@@ -75,6 +80,12 @@ func defaultInfraDeps() infraDeps {
 		preflight: func(string) []infra.Problem {
 			return infra.Preflight(infra.RealHostProbe(), infra.DefaultRequirements, infra.K3sVersion)
 		},
+		spec: func(ws string) (infra.Workspace, error) {
+			store := resolveDocsStore(ws, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir)
+			return infra.LoadWorkspace(filepath.Join(store, defaultConfigSub, infra.WorkspaceFile))
+		},
+		lock:            infra.LockHost,
+		applyEnvCA:      infra.ApplyEnvCA,
 		installK3s:      infra.InstallK3s,
 		installArgo:     infra.InstallArgo,
 		setRepoCred:     infra.SetRepoCredential,
@@ -151,6 +162,19 @@ func (d infraDeps) loadConfig() (string, infra.Config, error) {
 		return "", infra.Config{}, fmt.Errorf("%s: %w", infra.ConfigPath(home), err)
 	}
 	return home, cfg, nil
+}
+
+// workspaceSpec loads infra.json for the resolved workspace (the store is
+// found from it, or from the default store when there is no workspace).
+func (d infraDeps) workspaceSpec() (infra.Workspace, error) {
+	ws, ok, err := d.workspace()
+	if err != nil {
+		return infra.Workspace{}, err
+	}
+	if !ok {
+		ws = ""
+	}
+	return d.spec(ws)
 }
 
 // infraTarget is the domain and helm chart ref a command works on, with where
@@ -248,12 +272,6 @@ func (d infraDeps) upCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
-			valid := infra.CoreRepos()
-			for repo := range refs {
-				if !slices.Contains(valid, repo) {
-					return exitcode.New(exitcode.BadArgs, fmt.Errorf("--ref: unknown repo %q (valid: %s)", repo, strings.Join(valid, ", ")))
-				}
-			}
 			return d.runUp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), chartRef, refs)
 		},
 	}
@@ -278,6 +296,16 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	if !ok {
 		return failStep("workspace", errors.New("no zenify workspace found (run zenify up first)"))
 	}
+	w, err := d.spec(ws)
+	if err != nil {
+		return failStep("workspace", err)
+	}
+	valid := w.Repos()
+	for repo := range refs {
+		if !slices.Contains(valid, repo) {
+			return exitcode.New(exitcode.BadArgs, fmt.Errorf("--ref: unknown repo %q (valid: %s)", repo, strings.Join(valid, ", ")))
+		}
+	}
 	if ps := d.preflight(ws); len(ps) > 0 {
 		for _, p := range ps {
 			fmt.Fprintf(errW, "problem %s: %s\n  fix: %s\n", p.Check, p.Detail, p.Fix)
@@ -285,6 +313,25 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 		return failStep("preflight", fmt.Errorf("%d problem(s), nothing was changed", len(ps)))
 	}
 	fmt.Fprintln(out, "preflight      ok")
+	unlock, err := d.lock(home)
+	if err != nil {
+		return failStep("lock", err)
+	}
+	defer func() {
+		if uerr := unlock(); uerr != nil {
+			fmt.Fprintf(errW, "warning: release infra lock: %v\n", uerr)
+		}
+	}()
+	r := d.runner
+
+	// k3s first: a restart that failed in an earlier run left the API down,
+	// and only InstallK3s's restart-marker retry brings it back
+	changed, err := d.installK3s(ctx, r)
+	if err != nil {
+		return failStep("k3s", err)
+	}
+	fmt.Fprintf(out, "k3s            %s\n", changedWord(changed))
+	// the target and the drift check come before anything is applied to Argo
 	tg, err := d.resolveTarget(ctx, home, cfg, chartRef)
 	if err != nil {
 		return failStep("target", err)
@@ -294,13 +341,6 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	}
 	domain, chartRef := tg.domain, tg.chartRef
 	fmt.Fprintf(out, "target         domain %s (%s), chart ref %s (%s)\n", domain, tg.domainFrom, chartRef, tg.refFrom)
-	r := d.runner
-
-	changed, err := d.installK3s(ctx, r)
-	if err != nil {
-		return failStep("k3s", err)
-	}
-	fmt.Fprintf(out, "k3s            %s\n", changedWord(changed))
 	if changed, err = d.installArgo(ctx, r); err != nil {
 		return failStep("argocd", err)
 	}
@@ -309,11 +349,11 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	if err != nil {
 		return failStep("repo-credential", fmt.Errorf("gh auth token: %w", err))
 	}
-	if err := d.setRepoCred(ctx, r, strings.TrimSpace(string(tok))); err != nil {
+	if err := d.setRepoCred(ctx, r, w.HelmRepoURL, strings.TrimSpace(string(tok))); err != nil {
 		return failStep("repo-credential", err)
 	}
 	fmt.Fprintln(out, "repo-credential applied")
-	if err := d.applyPlatform(ctx, r, domain, chartRef); err != nil {
+	if err := d.applyPlatform(ctx, r, w.HelmRepoURL, domain, chartRef); err != nil {
 		return failStep("platform", err)
 	}
 	if err := d.waitApp(ctx, r, infra.PlatformApp, platformTimeout); err != nil {
@@ -337,12 +377,12 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	}
 	fmt.Fprintf(out, "dns            %s (restarted)\n", changedWord(changed))
 
-	images, err := d.buildImages(ctx, out, home, ws, domain, refs)
+	images, err := d.buildImages(ctx, out, w, home, ws, domain, refs)
 	if err != nil {
 		return failStep("build", err)
 	}
 	slug := infra.BaseSlug
-	if err := d.applyEnv(ctx, out, slug, domain, chartRef, images); err != nil {
+	if err := d.applyEnv(ctx, out, w, slug, domain, chartRef, images, pem); err != nil {
 		return err
 	}
 	created := time.Now().UTC()
@@ -352,17 +392,17 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	if err := d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: created}); err != nil {
 		return failStep("state", err)
 	}
-	fmt.Fprintf(out, "\nready: https://%s\n", infra.Host("web", slug, domain))
-	fmt.Fprintf(out, "seed login: email %s, domain %s\n", infra.SeedAccounts[0].Email, infra.SeedTenant)
+	fmt.Fprintf(out, "\nready: %s\n", strings.Join(infra.EnvURLs(w, slug, domain), " "))
+	fmt.Fprintf(out, "seed login: email %s, domain %s (%s)\n", w.Seed.Accounts[0].Email, w.Seed.Tenant, w.Seed.PasswordHint)
 	return nil
 }
 
-// buildImages builds base-spa then the core images; it returns repo → tag.
-func (d infraDeps) buildImages(ctx context.Context, out io.Writer, home, ws, domain string, refs map[string]string) (map[string]string, error) {
+// buildImages builds the workspace's images in order; it returns repo → tag.
+func (d infraDeps) buildImages(ctx context.Context, out io.Writer, w infra.Workspace, home, ws, domain string, refs map[string]string) (map[string]string, error) {
 	if _, err := d.ensureBuildctl(ctx, d.runner, home); err != nil {
 		return nil, err
 	}
-	ts, err := d.coreTargets(ws, domain, infra.BaseSlug)
+	ts, err := d.coreTargets(w, ws, domain, infra.BaseSlug)
 	if err != nil {
 		return nil, err
 	}
@@ -378,14 +418,23 @@ func (d infraDeps) buildImages(ctx context.Context, out io.Writer, home, ws, dom
 	return images, nil
 }
 
-// applyEnv brings env slug up in two phases: datastores + seed, then the apps.
-// An env whose apps already exist skips phase 1: re-applying it would prune them.
-func (d infraDeps) applyEnv(ctx context.Context, out io.Writer, slug, domain, chartRef string, images map[string]string) error {
+// applyEnv publishes the local CA into env slug's namespace, then brings the
+// env up in two phases: datastores + seed, then the apps. An env where any
+// phase-2 app already exists skips phase 1: re-applying it would prune them.
+func (d infraDeps) applyEnv(ctx context.Context, out io.Writer, w infra.Workspace, slug, domain, chartRef string, images map[string]string, caPEM []byte) error {
 	r := d.runner
 	root := infra.EnvAppName(slug)
-	hasApps, err := d.appExists(ctx, r, infra.AppsProbe(slug))
-	if err != nil {
-		return failStep("env-phase-1", err)
+	if err := d.applyEnvCA(ctx, r, slug, caPEM); err != nil {
+		return failStep("env-ca", err)
+	}
+	fmt.Fprintf(out, "env-ca         %s/%s applied\n", infra.EnvNamespace(slug), infra.EnvCAConfigMap)
+	hasApps := false
+	for _, name := range infra.PhaseTwoApps(w, slug) {
+		ok, err := d.appExists(ctx, r, name)
+		if err != nil {
+			return failStep("env-phase-1", err)
+		}
+		hasApps = hasApps || ok
 	}
 	for phase := 1; phase <= 2; phase++ {
 		step := fmt.Sprintf("env-phase-%d", phase)
@@ -393,7 +442,7 @@ func (d infraDeps) applyEnv(ctx context.Context, out io.Writer, slug, domain, ch
 			fmt.Fprintf(out, "%-14s skipped (apps already deployed)\n", step)
 			continue
 		}
-		m, err := infra.RenderEnvApp(slug, domain, chartRef, images, infra.ProfileCore, phase)
+		m, err := infra.RenderEnvApp(w, slug, domain, chartRef, images, phase)
 		if err != nil {
 			return failStep(step, err)
 		}
@@ -401,7 +450,7 @@ func (d infraDeps) applyEnv(ctx context.Context, out io.Writer, slug, domain, ch
 		if err != nil {
 			return failStep(step, err)
 		}
-		for _, name := range append([]string{root}, infra.ChildApps(slug, phase)...) {
+		for _, name := range append([]string{root}, infra.ChildApps(w, slug, phase)...) {
 			if err := d.waitApp(ctx, r, name, envTimeout); err != nil {
 				return failStep(step, err)
 			}
@@ -433,7 +482,11 @@ func (d infraDeps) statusCmd() *cobra.Command {
 			if err != nil {
 				return failStep("target", err)
 			}
-			rep, err := d.status(ctx, d.runner, home, tg.domain)
+			w, err := d.workspaceSpec()
+			if err != nil {
+				return failStep("workspace", err)
+			}
+			rep, err := d.status(ctx, d.runner, w, home, tg.domain)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err) // already prefixed "status:"
 			}
@@ -458,9 +511,6 @@ func (d infraDeps) statusCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
-
-// seedPasswordHint is printed instead of any password.
-const seedPasswordHint = "password: see zenify-data-seed README (preview)"
 
 func (d infraDeps) showCmd() *cobra.Command {
 	var (
@@ -487,7 +537,11 @@ func (d infraDeps) showCmd() *cobra.Command {
 			if err != nil {
 				return failStep("target", err)
 			}
-			rep, err := d.show(ctx, d.runner, home, tg.domain, slug)
+			w, err := d.workspaceSpec()
+			if err != nil {
+				return failStep("workspace", err)
+			}
+			rep, err := d.show(ctx, d.runner, w, home, tg.domain, slug)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err) // already prefixed "show:"
 			}
@@ -514,7 +568,11 @@ func (d infraDeps) showCmd() *cobra.Command {
 					fmt.Fprintf(out, "  %-4s %-40s %-20s %s\n", a.Svc, a.URL, a.Repo, tag)
 				}
 			}
-			fmt.Fprintf(out, "accounts  tenant domain %s, %s\n", infra.SeedTenant, seedPasswordHint)
+			tenant := ""
+			if len(rep.Accounts) > 0 {
+				tenant = rep.Accounts[0].Tenant
+			}
+			fmt.Fprintf(out, "accounts  tenant domain %s, password: %s\n", tenant, rep.LoginHelp)
 			for _, a := range rep.Accounts {
 				fmt.Fprintf(out, "  %-14s %s\n", a.Role, a.Email)
 			}
@@ -566,6 +624,15 @@ func (d infraDeps) runDown(ctx context.Context, out io.Writer, purge, applyFlag 
 	if err != nil {
 		return failStep("home", err)
 	}
+	unlock, err := d.lock(home)
+	if err != nil {
+		return failStep("lock", err)
+	}
+	defer func() {
+		if uerr := unlock(); uerr != nil {
+			fmt.Fprintf(out, "warning: release infra lock: %v\n", uerr)
+		}
+	}()
 	r := d.runner
 	k3s, err := d.k3sVersion(ctx, r)
 	if err != nil {

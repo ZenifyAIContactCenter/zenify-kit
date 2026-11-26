@@ -4,10 +4,11 @@ title: Devbox k3s cục bộ
 
 # Devbox k3s cục bộ với `zenify infra`
 
-[`zenify infra`](/reference/cli/zenify_infra) dựng trên một máy Linux (Ubuntu Server, systemd, sudo không cần mật khẩu) một cluster k3s riêng, ArgoCD, chart `local-platform` và env `base` gồm mongo, mysql, redis, `contact-center-be`, `contact-center-hub`, `contact-center-web` với dữ liệu seed. Mọi lệnh cần cờ `--local`.
+[`zenify infra`](/reference/cli/zenify_infra) dựng trên một máy Linux (Ubuntu Server, systemd, sudo không cần mật khẩu) một cluster k3s riêng, ArgoCD, chart `local-platform` và env `base` gồm các datastore, app và dữ liệu seed mà workspace khai báo. Mọi lệnh cần cờ `--local`.
 
 ## Trước khi chạy
 
+- Knowledge store có `<store>/.config/infra.json`: repo helm, danh sách image cần build, các app của env và tài khoản seed. Binary của kit không chứa các giá trị này; schema xem ở [`zenify infra`](/reference/cli/zenify_infra). Thiếu file thì `up`, `status`, `show` dừng và nêu đường dẫn file.
 - `gh auth login` xong: token của `gh` dùng để ArgoCD đọc repo helm và làm `NPM_TOKEN` khi build.
 - Có `curl`, `git`, `gh`, `certutil` (gói `libnss3-tools`), `nft` (gói `nftables`), `resolvectl` (systemd-resolved), tối thiểu 6 GiB RAM và 30 GiB trống cho `/var/lib/rancher`.
 
@@ -26,7 +27,7 @@ zenify infra show --local
 
 [`zenify infra show --local`](/reference/cli/zenify_infra_show) in URL, repo, image tag đang chạy của từng app và tài khoản seed (không in mật khẩu).
 
-`up` chạy lại được: bước đã xong in `unchanged`. Khi đã có platform, `up` giữ domain và chart ref đang chạy; muốn đổi thì đặt rõ domain bằng `zenify infra config --local --domain <x>.test` hoặc chart ref bằng `zenify infra up --local --chart-ref <ref>`, nếu không lệnh dừng và báo khác biệt. Khi xong, lệnh in `https://web.<domain>` (env `base` không có slug trong host: `web.zenify.test`, `be.zenify.test`, `hub.zenify.test`; env khác là `<svc>-<slug>.<domain>`) và email, domain của tài khoản seed. Nếu URL không mở được, [`zenify infra status --local`](/reference/cli/zenify_infra_status) cho biết DNS có resolve không và CA đã được tin chưa.
+`up` chạy lại được: bước đã xong in `unchanged`. Khi đã có platform, `up` giữ domain và chart ref đang chạy; muốn đổi thì đặt rõ domain bằng `zenify infra config --local --domain <x>.test` hoặc chart ref bằng `zenify infra up --local --chart-ref <ref>`, nếu không lệnh dừng và báo khác biệt. Khi xong, lệnh in URL các app (env `base` không có slug trong host, ví dụ `web.zenify.test`; env khác là `<svc>-<slug>.<domain>`), email, tenant domain của tài khoản seed và chỗ ghi mật khẩu. Trước pha 1, lệnh đặt CA nội bộ vào ConfigMap `local-ca` (key `ca.crt`) của namespace env để pod tin HTTPS của env. Nếu URL không mở được, [`zenify infra status --local`](/reference/cli/zenify_infra_status) cho biết DNS có resolve không và CA đã được tin chưa.
 
 ## Gỡ
 

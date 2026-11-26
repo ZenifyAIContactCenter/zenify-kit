@@ -44,7 +44,7 @@ func (execRunner) Run(ctx context.Context, stdin io.Reader, name string, args ..
 type BuildRunner interface {
 	Runner
 	// RunEnv runs name with the current env plus env; a failure carries only
-	// the tail of stderr (build logs are long).
+	// the tail of stderr (build logs are long), with every value of env redacted.
 	RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
 	// Start launches name in the background; stop kills it and waits for it.
 	Start(ctx context.Context, name string, args ...string) (stop func() error, err error)
@@ -63,6 +63,13 @@ func (execRunner) RunEnv(ctx context.Context, env []string, name string, args ..
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
+		// redact the env values (the secrets) before cutting the tail: a cut
+		// through a secret would leave a fragment no later redaction matches
+		for _, kv := range env {
+			if _, v, ok := strings.Cut(kv, "="); ok && v != "" {
+				msg = strings.ReplaceAll(msg, v, "[redacted]")
+			}
+		}
 		if len(msg) > stderrTail {
 			msg = "..." + msg[len(msg)-stderrTail:]
 		}

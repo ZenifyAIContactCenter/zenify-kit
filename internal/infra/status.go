@@ -50,9 +50,9 @@ type appList struct {
 }
 
 // envDomain is the domain an env root Application was rendered with
-// (valuesObject.local-env.values.domain), or fallback when the source holds
+// (valuesObject.<seedKey>.values.domain), or fallback when the source holds
 // none. A source that does not parse, or spec.sources, is an error.
-func (a appStatus) envDomain(fallback string) (string, error) {
+func (a appStatus) envDomain(seedKey, fallback string) (string, error) {
 	if len(a.Spec.Source) == 0 {
 		if len(a.Spec.Sources) > 0 && string(a.Spec.Sources) != "null" {
 			return "", errors.New("spec.sources (multi-source) is not supported, want spec.source")
@@ -61,20 +61,26 @@ func (a appStatus) envDomain(fallback string) (string, error) {
 	}
 	var src struct {
 		Helm struct {
-			ValuesObject struct {
-				LocalEnv struct {
-					Values struct {
-						Domain string `json:"domain"`
-					} `json:"values"`
-				} `json:"local-env"`
-			} `json:"valuesObject"`
+			ValuesObject map[string]json.RawMessage `json:"valuesObject"`
 		} `json:"helm"`
 	}
 	if err := json.Unmarshal(a.Spec.Source, &src); err != nil {
 		return "", fmt.Errorf("parse spec.source: %w", err)
 	}
-	if d := src.Helm.ValuesObject.LocalEnv.Values.Domain; d != "" {
-		return d, nil
+	raw, ok := src.Helm.ValuesObject[seedKey]
+	if !ok {
+		return fallback, nil
+	}
+	var seed struct {
+		Values struct {
+			Domain string `json:"domain"`
+		} `json:"values"`
+	}
+	if err := json.Unmarshal(raw, &seed); err != nil {
+		return "", fmt.Errorf("parse valuesObject.%s: %w", seedKey, err)
+	}
+	if seed.Values.Domain != "" {
+		return seed.Values.Domain, nil
 	}
 	return fallback, nil
 }
@@ -152,8 +158,9 @@ func ArgoInstalledVersion(ctx context.Context, r Runner) (string, error) {
 }
 
 // Status reads the devbox: k3s, ArgoCD, the platform and env Applications, a
-// real DNS lookup of the first env's web host and the CA trust.
-func Status(ctx context.Context, r Runner, home, domain string) (Report, error) {
+// real DNS lookup of the first env's first app host (on that env's own
+// domain) and the CA trust.
+func Status(ctx context.Context, r Runner, w Workspace, home, domain string) (Report, error) {
 	rep := Report{K3s: NotInstalled, ArgoCD: NotInstalled, Platform: AppState{"Missing", "Missing"}, Envs: []EnvStatus{}}
 	k3s, err := installedK3s(ctx, r)
 	if err != nil {
@@ -178,20 +185,24 @@ func Status(ctx context.Context, r Runner, home, domain string) (Report, error) 
 					rep.Platform = st
 				case strings.HasPrefix(name, "env-"):
 					slug := strings.TrimPrefix(name, "env-")
-					envDomain, err := it.envDomain(domain)
+					envDomain, err := it.envDomain(w.seedApp().Key, domain)
 					if err != nil {
 						return rep, fmt.Errorf("status: application %s: env domain unreadable: %w", name, err)
 					}
-					rep.Envs = append(rep.Envs, EnvStatus{Slug: slug, Sync: st.Sync, Health: st.Health, URLs: EnvURLs(slug, envDomain)})
+					rep.Envs = append(rep.Envs, EnvStatus{Slug: slug, Sync: st.Sync, Health: st.Health, URLs: EnvURLs(w, slug, envDomain)})
 				}
 			}
 		}
 	}
-	slug := BaseSlug
-	if len(rep.Envs) > 0 {
-		slug = rep.Envs[0].Slug
+	svcs := w.svcApps()
+	switch {
+	case len(rep.Envs) > 0 && len(rep.Envs[0].URLs) > 0:
+		rep.DNS.Host = strings.TrimPrefix(rep.Envs[0].URLs[0], "https://")
+	case len(svcs) > 0:
+		rep.DNS.Host = Host(svcs[0].Svc, BaseSlug, domain)
+	default:
+		return rep, fmt.Errorf("status: %s has no env app with svc to probe DNS with", WorkspaceFile)
 	}
-	rep.DNS.Host = Host("web", slug, domain)
 	if rep.DNS.Resolves, err = DNSResolves(ctx, r, rep.DNS.Host); err != nil {
 		return rep, fmt.Errorf("status: %w", err)
 	}
@@ -240,7 +251,26 @@ func DeleteNamespace(ctx context.Context, r Runner, ns string) error {
 	return nil
 }
 
-const k3sUninstall = "/usr/local/bin/k3s-uninstall.sh"
+const (
+	k3sUninstall   = "/usr/local/bin/k3s-uninstall.sh"
+	k3sServiceUnit = "/etc/systemd/system/k3s.service"
+)
+
+// k3sGone is nil when neither the k3s binary nor its systemd unit is left.
+func k3sGone(ctx context.Context, r Runner) error {
+	ver, err := installedK3s(ctx, r)
+	if err != nil {
+		return err
+	}
+	_, unit, err := readRootFile(ctx, r, k3sServiceUnit)
+	if err != nil {
+		return err
+	}
+	if ver != "" || unit {
+		return fmt.Errorf("k3s is still installed (binary %q, unit %s present=%v) but %s is missing: remove k3s by hand, then rerun", ver, k3sServiceUnit, unit, k3sUninstall)
+	}
+	return nil
+}
 
 // UninstallK3s runs k3s-uninstall.sh when present, then removes the API
 // firewall unit (after k3s, so its ports are never open while k3s runs).
@@ -251,6 +281,9 @@ func UninstallK3s(ctx context.Context, r Runner) error {
 		if _, err := r.Run(ctx, nil, "sudo", k3sUninstall); err != nil {
 			return fmt.Errorf("uninstall k3s: %w", err)
 		}
+	} else if err := k3sGone(ctx, r); err != nil {
+		// keep the firewall (and the caller keeps state) while k3s can still start
+		return fmt.Errorf("uninstall k3s: %w", err)
 	}
 	if _, exists, err := readRootFile(ctx, r, unitPath); err != nil {
 		return fmt.Errorf("remove firewall: %w", err)
@@ -259,7 +292,7 @@ func UninstallK3s(ctx context.Context, r Runner) error {
 			return fmt.Errorf("remove firewall: disable: %w", err)
 		}
 	}
-	if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", unitPath, nftPath); err != nil {
+	if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", unitPath, nftPath, fwMarker); err != nil {
 		return fmt.Errorf("remove firewall: rm: %w", err)
 	}
 	if _, err := r.Run(ctx, nil, "sudo", "systemctl", "daemon-reload"); err != nil {

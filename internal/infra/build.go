@@ -19,10 +19,6 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
 
-// BaseSpaTag is the fixed tag of the organisation's SPA base image; web's
-// Dockerfile defaults BASE_TAG to it.
-const BaseSpaTag = "1.30"
-
 // BuildTarget is one image built from a repo's own Dockerfile.
 type BuildTarget struct {
 	Repo       string            // repo name under <ws>/repos
@@ -66,55 +62,31 @@ func VariantTag(tag string, t BuildTarget) string {
 	return tag + "-v" + hex.EncodeToString(sum[:])[:8]
 }
 
-// CoreTargets returns the images of a base env in build order: base-spa before
-// web (web's runtime stage is FROM base-spa). No ref points at repo.zenify.vn,
-// which needs a login.
-func CoreTargets(ws, domain, slug string) ([]BuildTarget, error) {
+// CoreTargets returns the images of env slug in the workspace's build order
+// (a base image before the images built FROM it), with its per-env build args
+// resolved. Every repo must be checked out under <ws>/repos.
+func CoreTargets(w Workspace, ws, domain, slug string) ([]BuildTarget, error) {
 	if domain == "" || slug == "" {
 		return nil, fmt.Errorf("build targets: domain %q and slug %q are both required", domain, slug)
 	}
-	ts := coreTargets(domain, slug)
-	for _, t := range ts {
-		if _, err := os.Stat(filepath.Join(ws, "repos", t.Repo)); err != nil { //nolint:gosec // G703 -- t.Repo is a literal from coreTargets, ws is the kit's own workspace root
+	ts := make([]BuildTarget, 0, len(w.Builds))
+	for _, b := range w.Builds {
+		t := BuildTarget{Repo: b.Repo, Dir: b.Context, Dockerfile: b.Dockerfile, Target: b.Target,
+			Image: RegistryHost + "/" + b.Image, Tag: b.Tag, Args: map[string]string{},
+			Secrets: b.Secrets, OptSecrets: b.OptionalSecrets}
+		for k, v := range b.Args {
+			t.Args[k] = v
+		}
+		for _, k := range sortedKeys(b.EnvArgs) {
+			t.Args[k] = envArgValue(b.EnvArgs[k], slug, domain)
+			t.EnvArgs = append(t.EnvArgs, k)
+		}
+		if _, err := os.Stat(filepath.Join(ws, "repos", t.Repo)); err != nil { //nolint:gosec // G703 -- t.Repo comes from the workspace's own infra.json, ws is the kit's workspace root
 			return nil, fmt.Errorf("build targets: repo %s: %w", t.Repo, err)
 		}
+		ts = append(ts, t)
 	}
 	return ts, nil
-}
-
-// bareHosts is web's PREVIEW_BARE_HOSTS: "1" drops -<slug> from the base
-// env's hosts, matching Host.
-func bareHosts(slug string) string {
-	if slug == BaseSlug {
-		return "1"
-	}
-	return "0"
-}
-
-// CoreRepos lists the repos CoreTargets builds, in build order.
-func CoreRepos() []string {
-	var out []string
-	for _, t := range coreTargets("x.test", BaseSlug) {
-		out = append(out, t.Repo)
-	}
-	return out
-}
-
-func coreTargets(domain, slug string) []BuildTarget {
-	return []BuildTarget{
-		{Repo: "zenify-ci", Dir: "stacks/spa", Dockerfile: "base.Dockerfile", Image: RegistryHost + "/zenify/base-spa", Tag: BaseSpaTag,
-			Args: map[string]string{"VERSION": BaseSpaTag}},
-		{Repo: "contact-center-be", Dir: ".", Dockerfile: "Dockerfile", Target: "api", Image: RegistryHost + "/contact-center-be/api",
-			Secrets: []string{"npm_token"}},
-		{Repo: "contact-center-hub", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/contact-center-hub",
-			Secrets: []string{"npm_token"}, OptSecrets: []string{"npm_taskforcesh_token"}},
-		{Repo: "contact-center-web", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/contact-center-web",
-			Args: map[string]string{"BUILD_MODE": "preview", "PREVIEW_SLUG": slug, "PREVIEW_DOMAIN": domain, "REGISTRY": RegistryHost, "BASE_TAG": BaseSpaTag,
-				"PREVIEW_BARE_HOSTS": bareHosts(slug)},
-			EnvArgs: []string{"PREVIEW_SLUG", "PREVIEW_DOMAIN", "REGISTRY", "PREVIEW_BARE_HOSTS"},
-			Secrets: []string{"npm_token"}},
-		{Repo: "zenify-data-seed", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/zenify-data-seed"},
-	}
 }
 
 // BuildResult reports one target of BuildFromBase.
@@ -287,29 +259,47 @@ func secretEnv(ctx context.Context, r Runner, ws string, ids, optional []string)
 		return nil, nil, nil, nil
 	}
 	store := devenv.Path(ws)
-	f, err := devenv.Load(store)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("read %s: %w", store, err)
+	var f *devenv.File
+	// the process env wins; the store is read only for a key the env lacks, so
+	// an unreadable store never blocks secrets the env already provides
+	lookup := func(key string) (string, error) {
+		if v := os.Getenv(key); v != "" {
+			return v, nil
+		}
+		if f == nil {
+			loaded, err := devenv.Load(store)
+			if err != nil {
+				return "", fmt.Errorf("read %s: %w", store, err)
+			}
+			f = loaded
+		}
+		return devenv.Lookup(os.Getenv, f)(key), nil
 	}
-	lookup := devenv.Lookup(os.Getenv, f)
 	for _, id := range optional {
 		key := strings.ToUpper(id)
-		if v := lookup(key); v != "" {
+		v, err := lookup(key)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if v != "" {
 			used, env, values = append(used, id), append(env, key+"="+v), append(values, v)
 		}
 	}
 	for _, id := range ids {
 		key := strings.ToUpper(id)
-		v := lookup(key)
+		v, err := lookup(key)
+		if err != nil {
+			return nil, nil, values, err
+		}
 		if v == "" && id == "npm_token" {
 			out, err := r.Run(ctx, nil, "gh", "auth", "token")
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("NPM_TOKEN unset and gh auth token failed: %w", err)
+				return nil, nil, values, fmt.Errorf("NPM_TOKEN unset and gh auth token failed: %w", err)
 			}
 			v = strings.TrimSpace(string(out))
 		}
 		if v == "" {
-			return nil, nil, nil, fmt.Errorf("%s is not set (env or %s)", key, store)
+			return nil, nil, values, fmt.Errorf("%s is not set (env or %s)", key, store)
 		}
 		used, env, values = append(used, id), append(env, key+"="+v), append(values, v)
 	}

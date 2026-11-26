@@ -32,7 +32,7 @@ func TestImageTag(t *testing.T) {
 func fakeWorkspace(t *testing.T) string {
 	t.Helper()
 	ws := t.TempDir()
-	for _, repo := range []string{"zenify-ci", "contact-center-be", "contact-center-hub", "contact-center-web", "zenify-data-seed"} {
+	for _, repo := range []string{"ui-base", "shop-api", "shop-gateway", "shop-web", "demo-seed"} {
 		dir := filepath.Join(ws, "repos", repo, ".claude")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -45,7 +45,7 @@ func fakeWorkspace(t *testing.T) string {
 }
 
 func TestCoreTargets(t *testing.T) {
-	ts, err := CoreTargets(fakeWorkspace(t), "quyentm.test", "base")
+	ts, err := CoreTargets(testWS(t), fakeWorkspace(t), "devbox2.test", "base")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,34 +61,34 @@ func TestCoreTargets(t *testing.T) {
 			}
 		}
 	}
-	if idx["zenify-ci"] > idx["contact-center-web"] {
+	if idx["ui-base"] > idx["shop-web"] {
 		t.Fatal("base-spa must be built before web: web's runtime stage is FROM base-spa")
 	}
-	web := ts[idx["contact-center-web"]]
-	want := map[string]string{"BUILD_MODE": "preview", "PREVIEW_SLUG": "base", "PREVIEW_DOMAIN": "quyentm.test", "REGISTRY": RegistryHost}
+	web := ts[idx["shop-web"]]
+	want := map[string]string{"BUILD_MODE": "preview", "PREVIEW_SLUG": "base", "PREVIEW_DOMAIN": "devbox2.test", "REGISTRY": RegistryHost}
 	for k, v := range want {
 		if web.Args[k] != v {
 			t.Errorf("web arg %s = %q, want %q (bundle would call the wrong hosts)", k, web.Args[k], v)
 		}
 	}
-	spa := ts[idx["zenify-ci"]]
-	if spa.Image != RegistryHost+"/zenify/base-spa" || spa.Tag != "1.30" {
+	spa := ts[idx["ui-base"]]
+	if spa.Image != RegistryHost+"/team/base-ui" || spa.Tag != "2.0" {
 		t.Fatalf("base-spa ref = %s:%s, web's FROM would not find it", spa.Image, spa.Tag)
 	}
 }
 
 func TestCoreTargetsRejectsMissingInputs(t *testing.T) {
 	ws := fakeWorkspace(t)
-	if _, err := CoreTargets(ws, "", "base"); err == nil {
+	if _, err := CoreTargets(testWS(t), ws, "", "base"); err == nil {
 		t.Fatal("empty domain accepted: web would bake preview.zenify.vn hosts")
 	}
-	if _, err := CoreTargets(ws, "quyentm.test", ""); err == nil {
+	if _, err := CoreTargets(testWS(t), ws, "devbox2.test", ""); err == nil {
 		t.Fatal("empty slug accepted: the web preview build fails late")
 	}
-	if err := os.RemoveAll(filepath.Join(ws, "repos", "zenify-data-seed")); err != nil {
+	if err := os.RemoveAll(filepath.Join(ws, "repos", "demo-seed")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CoreTargets(ws, "quyentm.test", "base"); err == nil || !strings.Contains(err.Error(), "zenify-data-seed") {
+	if _, err := CoreTargets(testWS(t), ws, "devbox2.test", "base"); err == nil || !strings.Contains(err.Error(), "demo-seed") {
 		t.Fatalf("missing repo error = %v, want it named", err)
 	}
 }
@@ -132,12 +132,12 @@ func buildEnv(t *testing.T, status int) {
 
 func beTarget(t *testing.T) BuildTarget {
 	t.Helper()
-	ts, err := CoreTargets(fakeWorkspace(t), "quyentm.test", "base")
+	ts, err := CoreTargets(testWS(t), fakeWorkspace(t), "devbox2.test", "base")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, x := range ts {
-		if x.Repo == "contact-center-be" {
+		if x.Repo == "shop-api" {
 			x.Dir = t.TempDir()
 			return x
 		}
@@ -170,7 +170,7 @@ func TestBuildKeepsTokenOffArgv(t *testing.T) {
 		t.Fatal("buildctl not called")
 	}
 	line := bc.line()
-	for _, want := range []string{"--secret id=npm_token,env=NPM_TOKEN", "--opt target=api", "name=" + RegistryHost + "/contact-center-be/api:sha-abcdef1,push=true"} {
+	for _, want := range []string{"--secret id=npm_token,env=NPM_TOKEN", "--opt target=api", "name=" + RegistryHost + "/shop-api/api:sha-abcdef1,push=true"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("buildctl argv missing %q: %s", want, line)
 		}
@@ -197,12 +197,12 @@ func TestBuildSkipsExistingTag(t *testing.T) {
 
 func hubTarget(t *testing.T, ws string) BuildTarget {
 	t.Helper()
-	ts, err := CoreTargets(ws, "zenify.test", "base")
+	ts, err := CoreTargets(testWS(t), ws, "zenify.test", "base")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, x := range ts {
-		if x.Repo == "contact-center-hub" {
+		if x.Repo == "shop-gateway" {
 			x.Dir = t.TempDir()
 			return x
 		}
@@ -222,27 +222,27 @@ func buildctlLine(t *testing.T, r *fakeBuildRunner) string {
 	return ""
 }
 
-// Business rule (ruling 2026-11-26): the kit does not use NPM_TASKFORCESH_TOKEN;
+// Business rule (ruling 2026-11-26): the kit does not use NPM_EXTRA_TOKEN;
 // a hub build without it must still run, and it is passed only when set.
 func TestBuildHubTaskforceTokenIsOptional(t *testing.T) {
 	buildEnv(t, http.StatusNotFound)
 	t.Setenv("NPM_TOKEN", "x")
-	t.Setenv("NPM_TASKFORCESH_TOKEN", "")
+	t.Setenv("NPM_EXTRA_TOKEN", "")
 	ws := fakeWorkspace(t)
 	r := &fakeBuildRunner{}
 	if built, err := Build(context.Background(), r, ws, hubTarget(t, ws), "sha-abcdef1"); err != nil || !built {
 		t.Fatalf("built=%v err=%v, want the hub build to run without the taskforce token", built, err)
 	}
-	if line := buildctlLine(t, r); strings.Contains(line, "npm_taskforcesh_token") || !strings.Contains(line, "--secret id=npm_token,env=NPM_TOKEN") {
+	if line := buildctlLine(t, r); strings.Contains(line, "npm_extra_token") || !strings.Contains(line, "--secret id=npm_token,env=NPM_TOKEN") {
 		t.Fatalf("buildctl secrets wrong when the token is unset: %s", line)
 	}
 
-	t.Setenv("NPM_TASKFORCESH_TOKEN", "tf-value")
+	t.Setenv("NPM_EXTRA_TOKEN", "tf-value")
 	r = &fakeBuildRunner{}
 	if _, err := Build(context.Background(), r, ws, hubTarget(t, ws), "sha-abcdef1"); err != nil {
 		t.Fatal(err)
 	}
-	if line := buildctlLine(t, r); !strings.Contains(line, "--secret id=npm_taskforcesh_token,env=NPM_TASKFORCESH_TOKEN") || strings.Contains(line, "tf-value") {
+	if line := buildctlLine(t, r); !strings.Contains(line, "--secret id=npm_extra_token,env=NPM_EXTRA_TOKEN") || strings.Contains(line, "tf-value") {
 		t.Fatalf("set token must be passed via env only: %s", line)
 	}
 }
@@ -282,19 +282,19 @@ func gitFake(failBuild bool) func(call) ([]byte, error) {
 func TestBuildFromBaseRemovesTempWorktreeOnError(t *testing.T) {
 	buildEnv(t, http.StatusNotFound)
 	ws := fakeWorkspace(t)
-	ts, err := CoreTargets(ws, "quyentm.test", "base")
+	ts, err := CoreTargets(testWS(t), ws, "devbox2.test", "base")
 	if err != nil {
 		t.Fatal(err)
 	}
 	seed := ts[len(ts)-1]
 	r := &fakeBuildRunner{fakeRunner: fakeRunner{respond: gitFake(true)}}
-	_, err = BuildFromBase(context.Background(), r, ws, seed, map[string]string{"zenify-data-seed": "origin/feature"})
+	_, err = BuildFromBase(context.Background(), r, ws, seed, map[string]string{"demo-seed": "origin/feature"})
 	if err == nil {
 		t.Fatal("build error swallowed")
 	}
 	home, _ := os.UserHomeDir()
-	tmp := filepath.Join(infraDir(home), "src", "zenify-data-seed-0123456")
-	repo := filepath.Join(ws, "repos", "zenify-data-seed")
+	tmp := filepath.Join(infraDir(home), "src", "demo-seed-0123456")
+	repo := filepath.Join(ws, "repos", "demo-seed")
 	if !r.ran("git -C " + repo + " worktree add --detach " + tmp + " 0123456789abcdef0123456789abcdef01234567") {
 		t.Fatalf("temp worktree not created at %s: %v", tmp, r.calls)
 	}
@@ -314,7 +314,7 @@ func TestBuildFromBaseRemovesTempWorktreeOnError(t *testing.T) {
 func TestBuildFromBaseUsesWorktreeJSONBaseRef(t *testing.T) {
 	buildEnv(t, http.StatusOK)
 	ws := fakeWorkspace(t)
-	ts, err := CoreTargets(ws, "quyentm.test", "base")
+	ts, err := CoreTargets(testWS(t), ws, "devbox2.test", "base")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestBuildFromBaseUsesWorktreeJSONBaseRef(t *testing.T) {
 	if err != nil || res.Built {
 		t.Fatalf("res=%+v err=%v, want skipped", res, err)
 	}
-	repo := filepath.Join(ws, "repos", "zenify-data-seed")
+	repo := filepath.Join(ws, "repos", "demo-seed")
 	if !r.ran("git -C "+repo+" fetch origin") || !r.ran("git -C "+repo+" rev-parse --verify origin/staging^{commit}") {
 		t.Fatalf("baseRef from worktree.json not used: %v", r.calls)
 	}
@@ -334,12 +334,12 @@ func TestBuildFromBaseUsesWorktreeJSONBaseRef(t *testing.T) {
 
 func webTarget(t *testing.T, ws, domain, slug string) BuildTarget {
 	t.Helper()
-	ts, err := CoreTargets(ws, domain, slug)
+	ts, err := CoreTargets(testWS(t), ws, domain, slug)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, x := range ts {
-		if x.Repo == "contact-center-web" {
+		if x.Repo == "shop-web" {
 			return x
 		}
 	}
@@ -350,9 +350,9 @@ func webTarget(t *testing.T, ws, domain, slug string) BuildTarget {
 func TestVariantTagSeparatesEnvs(t *testing.T) {
 	ws := fakeWorkspace(t)
 	base := ImageTag("abcdef1234", nil)
-	a1 := VariantTag(base, webTarget(t, ws, "quyentm.test", "base"))
-	a2 := VariantTag(base, webTarget(t, ws, "quyentm.test", "base"))
-	other := VariantTag(base, webTarget(t, ws, "quyentm.test", "feat-x"))
+	a1 := VariantTag(base, webTarget(t, ws, "devbox2.test", "base"))
+	a2 := VariantTag(base, webTarget(t, ws, "devbox2.test", "base"))
+	other := VariantTag(base, webTarget(t, ws, "devbox2.test", "feat-x"))
 	otherDomain := VariantTag(base, webTarget(t, ws, "other.test", "base"))
 	if a1 != a2 {
 		t.Fatalf("same env gave %q and %q: an unchanged web image would be rebuilt", a1, a2)
@@ -370,7 +370,7 @@ func TestVariantTagSeparatesEnvs(t *testing.T) {
 
 func TestBaseSourceRejectsOptionLikeRef(t *testing.T) {
 	r := &fakeRunner{}
-	if _, _, _, err := BaseSource(context.Background(), r, fakeWorkspace(t), "zenify-data-seed", "--upload-pack=x"); err == nil {
+	if _, _, _, err := BaseSource(context.Background(), r, fakeWorkspace(t), "demo-seed", "--upload-pack=x"); err == nil {
 		t.Fatal("a ref starting with '-' reached git as an option")
 	}
 	if len(r.calls) != 0 {
@@ -384,12 +384,12 @@ func TestBaseSourceRejectsOptionLikeRef(t *testing.T) {
 func TestCoreTargetsWebBareHostsOnlyForBase(t *testing.T) {
 	ws := fakeWorkspace(t)
 	web := func(slug string) BuildTarget {
-		ts, err := CoreTargets(ws, "zenify.test", slug)
+		ts, err := CoreTargets(testWS(t), ws, "zenify.test", slug)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, x := range ts {
-			if x.Repo == "contact-center-web" {
+			if x.Repo == "shop-web" {
 				return x
 			}
 		}

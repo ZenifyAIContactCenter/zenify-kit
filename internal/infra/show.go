@@ -38,6 +38,8 @@ type ShowReport struct {
 	CA       string        `json:"ca"`
 	Envs     []ShowEnv     `json:"envs"`
 	Accounts []SeedAccount `json:"accounts"`
+	// LoginHelp says where the seed password is documented (never the password).
+	LoginHelp string `json:"loginHelp"`
 }
 
 // CACopyPath is the CA copy InstallCA keeps for tools (NODE_EXTRA_CA_CERTS).
@@ -71,8 +73,8 @@ func (a appStatus) imageTag() (string, error) {
 // Show lists each env (or only slug) with its app URLs, repos and image tags
 // read from the child Applications' values, plus the seed accounts. It only
 // reads (kubectl get). An unknown slug is an error naming the envs.
-func Show(ctx context.Context, r Runner, home, domain, slug string) (ShowReport, error) {
-	rep := ShowReport{Domain: domain, CA: CACopyPath(home), Envs: []ShowEnv{}, Accounts: SeedAccounts}
+func Show(ctx context.Context, r Runner, w Workspace, home, domain, slug string) (ShowReport, error) {
+	rep := ShowReport{Domain: domain, CA: CACopyPath(home), Envs: []ShowEnv{}, Accounts: w.Accounts(), LoginHelp: w.Seed.PasswordHint}
 	var apps appList
 	k3s, err := installedK3s(ctx, r)
 	if err != nil {
@@ -102,21 +104,18 @@ func Show(ctx context.Context, r Runner, home, domain, slug string) (ShowReport,
 			continue
 		}
 		root := byName[EnvAppName(s)]
-		envDomain, err := root.envDomain(domain)
+		envDomain, err := root.envDomain(w.seedApp().Key, domain)
 		if err != nil {
 			return rep, fmt.Errorf("show: application %s: env domain unreadable: %w", EnvAppName(s), err)
 		}
 		e := ShowEnv{Slug: s, Sync: root.Status.Sync.Status, Health: root.Status.Health.Status, Apps: []ShowApp{}}
-		for _, a := range envApps {
-			if a.svc == "" {
-				continue
-			}
-			name := ChildAppName(a.name, s)
+		for _, a := range w.svcApps() {
+			name := ChildAppName(a.Key, s)
 			tag, err := byName[name].imageTag() // absent child: empty source, no tag
 			if err != nil {
 				return rep, fmt.Errorf("show: application %s: image tag unreadable: %w", name, err)
 			}
-			e.Apps = append(e.Apps, ShowApp{Svc: a.svc, URL: "https://" + Host(a.svc, s, envDomain), Repo: a.name, Tag: tag})
+			e.Apps = append(e.Apps, ShowApp{Svc: a.Svc, URL: "https://" + Host(a.Svc, s, envDomain), Repo: a.Repo, Tag: tag})
 		}
 		rep.Envs = append(rep.Envs, e)
 	}

@@ -71,7 +71,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify guard install](./zenify_guard_install) | Gắn hook git-guard vào .claude/settings.local.json của workspace để chặn thao tác git vào branch deploy. |
 | [zenify hotfix](./zenify_hotfix) | Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve. |
 | [zenify hotfix baseref](./zenify_hotfix_baseref) | In base ref mà hotfix của một repo sẽ xuất phát, theo chiến lược khai trong `worktree.json`. |
-| [zenify infra](./zenify_infra) | Dựng và quản lý devbox k3s cục bộ (k3s, ArgoCD, platform, env `base`) trên một máy Linux. |
+| [zenify infra](./zenify_infra) | Dựng và quản lý devbox k3s cục bộ (k3s, ArgoCD, platform, env `base`) trên một máy Linux, theo cấu hình `infra.json` của workspace. |
 | [zenify infra config](./zenify_infra_config) | Xem hoặc đặt domain và số env tối đa của devbox k3s cục bộ. |
 | [zenify infra down](./zenify_infra_down) | Gỡ các env và platform khỏi devbox k3s cục bộ; `--purge` gỡ luôn k3s, CA và DNS. |
 | [zenify infra show](./zenify_infra_show) | In thông tin để dùng env trên devbox k3s cục bộ: domain, file CA, URL, repo, image tag của từng app và tài khoản seed. |

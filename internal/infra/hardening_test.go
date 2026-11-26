@@ -109,8 +109,8 @@ func TestBaseSourceNoGlobalPrune(t *testing.T) {
 	buildEnv(t, http.StatusOK)
 	ws := fakeWorkspace(t)
 	home, _ := os.UserHomeDir()
-	dir := filepath.Join(infraDir(home), "src", "zenify-data-seed-0123456")
-	repo := filepath.Join(ws, "repos", "zenify-data-seed")
+	dir := filepath.Join(infraDir(home), "src", "demo-seed-0123456")
+	repo := filepath.Join(ws, "repos", "demo-seed")
 	run := func(listed, exists bool) *fakeRunner {
 		t.Helper()
 		if err := os.RemoveAll(dir); err != nil {
@@ -131,7 +131,7 @@ func TestBaseSourceNoGlobalPrune(t *testing.T) {
 			}
 			return gitFake(false)(c)
 		}}
-		if _, _, cleanup, err := BaseSource(context.Background(), r, ws, "zenify-data-seed", ""); err != nil {
+		if _, _, cleanup, err := BaseSource(context.Background(), r, ws, "demo-seed", ""); err != nil {
 			t.Fatal(err)
 		} else if cleanup == nil {
 			t.Fatal("no cleanup")

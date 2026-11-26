@@ -11,10 +11,15 @@ import (
 
 // TestRealInstall drives the whole install on this host. It mutates the host
 // (root files, k3s restart, cluster objects), so it only runs with
-// ZNF_INFRA_REAL=1 and never in CI. Optional: ZNF_INFRA_DOMAIN, ZNF_INFRA_CHART_REF.
+// ZNF_INFRA_REAL=1 and never in CI. ZNF_INFRA_SPEC names the workspace's
+// infra.json. Optional: ZNF_INFRA_DOMAIN, ZNF_INFRA_CHART_REF.
 func TestRealInstall(t *testing.T) {
 	if os.Getenv("ZNF_INFRA_REAL") != "1" {
 		t.Skip("set ZNF_INFRA_REAL=1 to run against the real host")
+	}
+	w, err := LoadWorkspace(os.Getenv("ZNF_INFRA_SPEC"))
+	if err != nil {
+		t.Fatal(err)
 	}
 	domain, ref := os.Getenv("ZNF_INFRA_DOMAIN"), os.Getenv("ZNF_INFRA_CHART_REF")
 	if domain == "" {
@@ -40,11 +45,11 @@ func TestRealInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gh auth token: %v", err)
 	}
-	if err := SetRepoCredential(ctx, r, strings.TrimSpace(string(tok))); err != nil {
+	if err := SetRepoCredential(ctx, r, w.HelmRepoURL, strings.TrimSpace(string(tok))); err != nil {
 		t.Fatal(err)
 	}
 	t.Log("SetRepoCredential ok")
-	if err := ApplyPlatform(ctx, r, domain, ref); err != nil {
+	if err := ApplyPlatform(ctx, r, w.HelmRepoURL, domain, ref); err != nil {
 		t.Fatal(err)
 	}
 	t.Log("ApplyPlatform ok")
@@ -56,9 +61,10 @@ func TestRealInstall(t *testing.T) {
 
 // TestRealBuild builds the core images on this host into the local registry,
 // then checks every tag exists and a second pass skips them all. Needs a
-// running platform; only runs with ZNF_INFRA_REAL_BUILD=1 and ZNF_INFRA_WS.
-// Optional: ZNF_INFRA_DOMAIN, ZNF_INFRA_ONLY (comma-separated repos),
-// ZNF_INFRA_REF_<repo with - as _> (ref override, e.g. ZNF_INFRA_REF_contact_center_web).
+// running platform; only runs with ZNF_INFRA_REAL_BUILD=1, ZNF_INFRA_WS and
+// ZNF_INFRA_SPEC (the workspace's infra.json). Optional: ZNF_INFRA_DOMAIN,
+// ZNF_INFRA_ONLY (comma-separated repos), ZNF_INFRA_REF_<repo with - as _>
+// (ref override, e.g. ZNF_INFRA_REF_shop_web).
 func TestRealBuild(t *testing.T) {
 	if os.Getenv("ZNF_INFRA_REAL_BUILD") != "1" {
 		t.Skip("set ZNF_INFRA_REAL_BUILD=1 and ZNF_INFRA_WS to build on the real host")
@@ -67,7 +73,11 @@ func TestRealBuild(t *testing.T) {
 	if domain == "" {
 		domain = DefaultDomain
 	}
-	ts, err := CoreTargets(ws, domain, BaseSlug)
+	w, err := LoadWorkspace(os.Getenv("ZNF_INFRA_SPEC"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts, err := CoreTargets(w, ws, domain, BaseSlug)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,8 +12,6 @@ import (
 )
 
 const (
-	// HelmRepoURL is the git repo holding the platform and env charts.
-	HelmRepoURL = "https://github.com/ZenifyAIContactCenter/helm.git"
 	// PlatformApp is the ArgoCD Application that installs the platform chart.
 	PlatformApp = "local-platform"
 	argoNS      = "argocd"
@@ -30,22 +28,33 @@ func argoManifestURL() string {
 	return "https://raw.githubusercontent.com/argoproj/argo-cd/" + ArgoCDVersion + "/manifests/install.yaml"
 }
 
-// InstallArgo applies the pinned ArgoCD manifest unless argocd-server already
-// runs the pinned image, then waits for the ArgoCD workloads either way.
+// argoWorkloads are the ArgoCD workloads InstallArgo checks and waits for.
+var argoWorkloads = []string{"deploy/argocd-server", "deploy/argocd-repo-server", "statefulset/argocd-application-controller"}
+
+// InstallArgo applies the pinned ArgoCD manifest unless every ArgoCD workload
+// already runs the pinned image (a partial earlier apply is re-applied), then
+// waits for the workloads either way.
 func InstallArgo(ctx context.Context, r Runner) (changed bool, err error) {
-	img, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "deploy", "argocd-server", "--ignore-not-found",
-		"-o", "jsonpath={.spec.template.spec.containers[0].image}")
-	if err != nil {
-		return false, fmt.Errorf("install argocd: read installed version: %w", err)
+	pinned := true
+	for _, w := range argoWorkloads {
+		img, err := kubectl(ctx, r, nil, "-n", argoNS, "get", w, "--ignore-not-found",
+			"-o", "jsonpath={.spec.template.spec.containers[0].image}")
+		if err != nil {
+			return false, fmt.Errorf("install argocd: read %s: %w", w, err)
+		}
+		if !strings.HasSuffix(strings.TrimSpace(string(img)), ":"+ArgoCDVersion) {
+			pinned = false
+			break
+		}
 	}
-	if !strings.HasSuffix(strings.TrimSpace(string(img)), ":"+ArgoCDVersion) {
+	if !pinned {
 		if err := applyArgo(ctx, r); err != nil {
 			return true, err
 		}
 		changed = true
 	}
 	// always wait: an earlier run may have applied the manifest and failed here
-	for _, w := range []string{"deploy/argocd-server", "deploy/argocd-repo-server", "statefulset/argocd-application-controller"} {
+	for _, w := range argoWorkloads {
 		if _, err := kubectl(ctx, r, nil, "-n", argoNS, "rollout", "status", w, "--timeout=5m"); err != nil {
 			return changed, fmt.Errorf("install argocd: wait %s: %w", w, err)
 		}
@@ -66,11 +75,14 @@ func applyArgo(ctx context.Context, r Runner) error {
 
 // SetRepoCredential stores the GitHub token ArgoCD uses to read the helm repo.
 // The token travels on stdin only.
-func SetRepoCredential(ctx context.Context, r Runner, token string) error {
+func SetRepoCredential(ctx context.Context, r Runner, repoURL, token string) error {
 	if strings.TrimSpace(token) == "" {
 		return errors.New("set repo credential: empty token")
 	}
-	b, err := renderAsset("repo-secret.yaml.tmpl", map[string]string{"RepoURL": HelmRepoURL, "Token": token})
+	if repoURL == "" {
+		return errors.New("set repo credential: empty repo URL")
+	}
+	b, err := renderAsset("repo-secret.yaml.tmpl", map[string]string{"RepoURL": repoURL, "Token": token})
 	if err != nil {
 		return fmt.Errorf("set repo credential: %w", err)
 	}
@@ -82,19 +94,20 @@ func SetRepoCredential(ctx context.Context, r Runner, token string) error {
 	return nil
 }
 
-func renderPlatformApp(domain, chartRef string) ([]byte, error) {
-	if domain == "" || chartRef == "" {
-		return nil, fmt.Errorf("platform app: domain %q and chartRef %q are both required", domain, chartRef)
+func renderPlatformApp(repoURL, domain, chartRef string) ([]byte, error) {
+	if repoURL == "" || domain == "" || chartRef == "" {
+		return nil, fmt.Errorf("platform app: repoURL %q, domain %q and chartRef %q are all required", repoURL, domain, chartRef)
 	}
 	return renderAsset("platform-app.yaml.tmpl", map[string]string{
-		"Name": PlatformApp, "RepoURL": HelmRepoURL, "ChartRef": chartRef,
+		"Name": PlatformApp, "RepoURL": repoURL, "ChartRef": chartRef,
 		"Domain": domain, "Namespace": PlatformNamespace,
 	})
 }
 
-// ApplyPlatform creates or updates the local-platform Application at chartRef.
-func ApplyPlatform(ctx context.Context, r Runner, domain, chartRef string) error {
-	b, err := renderPlatformApp(domain, chartRef)
+// ApplyPlatform creates or updates the local-platform Application at chartRef
+// of the helm repo repoURL.
+func ApplyPlatform(ctx context.Context, r Runner, repoURL, domain, chartRef string) error {
+	b, err := renderPlatformApp(repoURL, domain, chartRef)
 	if err != nil {
 		return fmt.Errorf("apply platform: %w", err)
 	}

@@ -30,6 +30,8 @@ const (
 	k3sInstaller = "https://get.k3s.io"
 	// restartMarker exists while a k3s config change awaits a successful installer run.
 	restartMarker = "/etc/rancher/k3s/.zenify-restart-pending"
+	// fwMarker exists while a firewall file change awaits a successful reload.
+	fwMarker = "/etc/nftables.d/.zenify-firewall-reload-pending"
 	// mirrorHostsPath is containerd's config for the registry alias, rendered by
 	// k3s from registries.yaml (containerd config_path = .../containerd/certs.d).
 	mirrorHostsPath = "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/" + RegistryHost + "/hosts.toml"
@@ -114,7 +116,13 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 	if err != nil {
 		return false, fmt.Errorf("install k3s: %w", err)
 	}
-	var fwDirty bool
+	// a run that wrote firewall files but failed before the reload left the
+	// old rules active while the files already match
+	_, fwDirty, err := readRootFile(ctx, r, fwMarker)
+	if err != nil {
+		return false, fmt.Errorf("install k3s: %w", err)
+	}
+	fwPending := fwDirty
 	for _, f := range k3sHostFiles() {
 		content, err := f.render()
 		if err != nil {
@@ -132,6 +140,12 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 				return changed, fmt.Errorf("install k3s: restart marker: %w", err)
 			}
 			pending = true
+		}
+		if f.apply == applyFirewall && !fwPending {
+			if err := writeRootFile(ctx, r, fwMarker, []byte("firewall reload pending\n")); err != nil {
+				return changed, fmt.Errorf("install k3s: firewall marker: %w", err)
+			}
+			fwPending = true
 		}
 		if err := writeRootFile(ctx, r, f.path, content); err != nil {
 			return changed, fmt.Errorf("install k3s: %w", err)
@@ -158,6 +172,11 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		} {
 			if _, err := r.Run(ctx, nil, "sudo", args...); err != nil {
 				return changed, fmt.Errorf("install k3s: firewall: %v: %w", args, err)
+			}
+		}
+		if fwPending {
+			if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", fwMarker); err != nil {
+				return changed, fmt.Errorf("install k3s: remove firewall marker: %w", err)
 			}
 		}
 		// k3s.service requires the firewall unit, so restarting it restarts k3s

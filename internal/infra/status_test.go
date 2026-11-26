@@ -9,11 +9,12 @@ import (
 
 const appsJSON = `{"items":[
  {"metadata":{"name":"local-platform"},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}},
- {"metadata":{"name":"env-base"},"spec":{"source":{"helm":{"valuesObject":{"local-env":{"values":{"domain":"old.test"}}}}}},"status":{"sync":{"status":"OutOfSync"},"health":{"status":"Progressing"}}},
- {"metadata":{"name":"local-env-base-local"},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}]}`
+ {"metadata":{"name":"env-base"},"spec":{"source":{"helm":{"valuesObject":{"app-config":{"values":{"domain":"old.test"}}}}}},"status":{"sync":{"status":"OutOfSync"},"health":{"status":"Progressing"}}},
+ {"metadata":{"name":"app-config-base-local"},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}]}`
 
 // status reads the platform and root env apps from the local cluster only, and
-// DNS from a real resolvectl query of the env's web host.
+// DNS from a real resolvectl query of the env's first app host on the env's
+// own domain (not the current default, which may point elsewhere).
 func TestStatus_ReadsAppsAndRealDNS(t *testing.T) {
 	r := &fakeRunner{respond: func(c call) ([]byte, error) {
 		switch {
@@ -28,20 +29,20 @@ func TestStatus_ReadsAppsAndRealDNS(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	rep, err := Status(context.Background(), r, t.TempDir(), "quyentm.test")
+	rep, err := Status(context.Background(), r, testWS(t), t.TempDir(), "new.test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rep.Platform != (AppState{"Synced", "Healthy"}) || len(rep.Envs) != 1 || rep.Envs[0].Slug != "base" || rep.Envs[0].Health != "Progressing" {
 		t.Fatalf("report = %+v", rep)
 	}
-	if rep.Envs[0].URLs[0] != "https://web.old.test" {
+	if strings.Join(rep.Envs[0].URLs, " ") != "https://be.old.test https://hub.old.test https://web.old.test" {
 		t.Errorf("env url must use the env's own domain: %v", rep.Envs[0].URLs)
 	}
-	if rep.DNS.Host != "web.quyentm.test" || rep.DNS.Resolves {
+	if rep.DNS.Host != "be.old.test" || rep.DNS.Resolves {
 		t.Fatalf("dns = %+v", rep.DNS)
 	}
-	if !r.ran("resolvectl query web.quyentm.test") {
+	if !r.ran("resolvectl query be.old.test") {
 		t.Error("dns must come from a real resolvectl query")
 	}
 	for _, c := range r.calls {
@@ -59,7 +60,7 @@ func TestStatus_NoK3sSkipsCluster(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	rep, err := Status(context.Background(), r, t.TempDir(), "quyentm.test")
+	rep, err := Status(context.Background(), r, testWS(t), t.TempDir(), "devbox2.test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +73,11 @@ func TestStatus_NoK3sSkipsCluster(t *testing.T) {
 // another resolver's *.test wildcard (127.0.0.1) must not pass.
 func TestDNSResolves_RequiresIngressIP(t *testing.T) {
 	for out, want := range map[string]bool{
-		"web-base.quyentm.test: " + TraefikClusterIP + "   -- link: cni0\n": true,
-		"web-base.quyentm.test: 127.0.0.1\n":                                false,
+		"web-base.devbox2.test: " + TraefikClusterIP + "   -- link: cni0\n": true,
+		"web-base.devbox2.test: 127.0.0.1\n":                                false,
 	} {
 		r := &fakeRunner{respond: func(call) ([]byte, error) { return []byte(out), nil }}
-		got, err := DNSResolves(context.Background(), r, "web-base.quyentm.test")
+		got, err := DNSResolves(context.Background(), r, "web-base.devbox2.test")
 		if err != nil || got != want {
 			t.Errorf("%q: got %v err %v, want %v", out, got, err, want)
 		}
@@ -93,12 +94,12 @@ func TestLivePlatform(t *testing.T) {
 		case strings.Contains(c.line(), "deploy argocd-server"):
 			return []byte("quay.io/argoproj/argocd:" + ArgoCDVersion), nil
 		case strings.Contains(c.line(), "application local-platform --ignore-not-found"):
-			return []byte(`{"spec":{"source":{"targetRevision":"feat/x","helm":{"valuesObject":{"domain":"quyentm.test"}}}}}`), nil
+			return []byte(`{"spec":{"source":{"targetRevision":"feat/x","helm":{"valuesObject":{"domain":"devbox2.test"}}}}}`), nil
 		}
 		return nil, nil
 	}}
 	got, ok, err := LivePlatform(context.Background(), r)
-	if err != nil || !ok || got != (PlatformTarget{"quyentm.test", "feat/x"}) {
+	if err != nil || !ok || got != (PlatformTarget{"devbox2.test", "feat/x"}) {
 		t.Fatalf("got %+v ok=%v err=%v", got, ok, err)
 	}
 	none := &fakeRunner{respond: func(c call) ([]byte, error) {

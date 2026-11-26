@@ -11,7 +11,7 @@ func child(name, tag string) string {
 	return `{"metadata":{"name":"` + name + `"},"spec":{"source":{"helm":{"valuesObject":{"image":{"tag":"` + tag + `"}}}}},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}`
 }
 
-const showRoot = `{"metadata":{"name":"env-base"},"spec":{"source":{"helm":{"valuesObject":{"local-env":{"values":{"domain":"quyentm.test"}}}}}},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}`
+const showRoot = `{"metadata":{"name":"env-base"},"spec":{"source":{"helm":{"valuesObject":{"app-config":{"values":{"domain":"devbox2.test"}}}}}},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}`
 
 func showRunner(items ...string) *fakeRunner {
 	return &fakeRunner{respond: func(c call) ([]byte, error) {
@@ -31,11 +31,11 @@ func showRunner(items ...string) *fakeRunner {
 // a dev can tell which commit is deployed; show must never change the cluster.
 func TestShow_URLsReposAndRunningTags(t *testing.T) {
 	r := showRunner(showRoot,
-		child("contact-center-be-base-local", "sha-be00001"),
-		child("contact-center-hub-base-local", "sha-hub0001"),
-		child("contact-center-web-base-local", "sha-web0001-v1234abcd"),
-		child("local-env-base-local", ""))
-	rep, err := Show(context.Background(), r, "/home/u", "other.test", "")
+		child("shop-api-base-local", "sha-be00001"),
+		child("shop-gateway-base-local", "sha-hub0001"),
+		child("shop-web-base-local", "sha-web0001-v1234abcd"),
+		child("app-config-base-local", ""))
+	rep, err := Show(context.Background(), r, testWS(t), "/home/u", "other.test", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +43,9 @@ func TestShow_URLsReposAndRunningTags(t *testing.T) {
 		t.Fatalf("report = %+v", rep)
 	}
 	want := []ShowApp{
-		{"be", "https://be.quyentm.test", "contact-center-be", "sha-be00001"},
-		{"hub", "https://hub.quyentm.test", "contact-center-hub", "sha-hub0001"},
-		{"web", "https://web.quyentm.test", "contact-center-web", "sha-web0001-v1234abcd"},
+		{"be", "https://be.devbox2.test", "shop-api", "sha-be00001"},
+		{"hub", "https://hub.devbox2.test", "shop-gateway", "sha-hub0001"},
+		{"web", "https://web.devbox2.test", "shop-web", "sha-web0001-v1234abcd"},
 	}
 	got := rep.Envs[0].Apps
 	if len(got) != len(want) {
@@ -65,7 +65,7 @@ func TestShow_URLsReposAndRunningTags(t *testing.T) {
 
 // A mistyped --slug must fail and list the envs that exist.
 func TestShow_UnknownSlugListsEnvs(t *testing.T) {
-	_, err := Show(context.Background(), showRunner(showRoot), "/home/u", "quyentm.test", "nope")
+	_, err := Show(context.Background(), showRunner(showRoot), testWS(t), "/home/u", "devbox2.test", "nope")
 	if err == nil || !strings.Contains(err.Error(), `"nope"`) || !strings.Contains(err.Error(), "envs: base") {
 		t.Fatalf("err = %v", err)
 	}
@@ -73,7 +73,7 @@ func TestShow_UnknownSlugListsEnvs(t *testing.T) {
 
 // The seed password must never leave the kit through show (JSON or struct).
 func TestShow_JSONHasAccountsButNoPassword(t *testing.T) {
-	rep, err := Show(context.Background(), showRunner(), "/home/u", "quyentm.test", "")
+	rep, err := Show(context.Background(), showRunner(), testWS(t), "/home/u", "devbox2.test", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,12 +91,14 @@ func TestShow_JSONHasAccountsButNoPassword(t *testing.T) {
 		Accounts []struct {
 			Role, Email, Tenant string
 		} `json:"accounts"`
+		LoginHelp string `json:"loginHelp"`
 	}
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Domain != "quyentm.test" || got.CA == "" || got.Envs == nil || len(got.Accounts) != 2 ||
-		got.Accounts[0].Email != "admin@zenifytest.vn" || got.Accounts[1].Role != "agent" || got.Accounts[0].Tenant != "zenifytest" {
+	if got.Domain != "devbox2.test" || got.CA == "" || got.Envs == nil || len(got.Accounts) != 2 ||
+		got.Accounts[0].Email != "admin@demo.example" || got.Accounts[1].Role != "agent" || got.Accounts[0].Tenant != "demotenant" ||
+		got.LoginHelp != "see the demo-seed README" {
 		t.Fatalf("show json = %s", b)
 	}
 }
@@ -104,21 +106,21 @@ func TestShow_JSONHasAccountsButNoPassword(t *testing.T) {
 // The running tag is what show exists for: a source that cannot be read must
 // fail naming the app, never look like "not deployed yet" (-).
 func TestShow_UnreadableTagIsAnError(t *testing.T) {
-	bad := `{"metadata":{"name":"contact-center-web-base-local"},"spec":{"source":{"helm":"oops"}},"status":{}}`
-	_, err := Show(context.Background(), showRunner(showRoot, bad), "/home/u", "quyentm.test", "")
-	if err == nil || !strings.Contains(err.Error(), "contact-center-web-base-local") || !strings.Contains(err.Error(), "unreadable") {
+	bad := `{"metadata":{"name":"shop-web-base-local"},"spec":{"source":{"helm":"oops"}},"status":{}}`
+	_, err := Show(context.Background(), showRunner(showRoot, bad), testWS(t), "/home/u", "devbox2.test", "")
+	if err == nil || !strings.Contains(err.Error(), "shop-web-base-local") || !strings.Contains(err.Error(), "unreadable") {
 		t.Fatalf("err = %v", err)
 	}
-	multi := `{"metadata":{"name":"contact-center-be-base-local"},"spec":{"sources":[{"helm":{}}]},"status":{}}`
-	if _, err := Show(context.Background(), showRunner(showRoot, multi), "/home/u", "quyentm.test", ""); err == nil || !strings.Contains(err.Error(), "multi-source") {
+	multi := `{"metadata":{"name":"shop-api-base-local"},"spec":{"sources":[{"helm":{}}]},"status":{}}`
+	if _, err := Show(context.Background(), showRunner(showRoot, multi), testWS(t), "/home/u", "devbox2.test", ""); err == nil || !strings.Contains(err.Error(), "multi-source") {
 		t.Fatalf("multi-source err = %v", err)
 	}
 }
 
 // A child that exists without image.tag, or not at all yet, has no tag ("-").
 func TestShow_MissingTagIsEmpty(t *testing.T) {
-	noTag := `{"metadata":{"name":"contact-center-be-base-local"},"spec":{"source":{"helm":{"valuesObject":{}}}},"status":{}}`
-	rep, err := Show(context.Background(), showRunner(showRoot, noTag), "/home/u", "quyentm.test", "")
+	noTag := `{"metadata":{"name":"shop-api-base-local"},"spec":{"source":{"helm":{"valuesObject":{}}}},"status":{}}`
+	rep, err := Show(context.Background(), showRunner(showRoot, noTag), testWS(t), "/home/u", "devbox2.test", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,20 +135,20 @@ func TestShow_MissingTagIsEmpty(t *testing.T) {
 // naming the app in show and status, not silently use the default domain.
 func TestEnvDomain_UnreadableRootIsAnError(t *testing.T) {
 	badRoot := `{"metadata":{"name":"env-base"},"spec":{"source":{"helm":"oops"}},"status":{}}`
-	if _, err := Show(context.Background(), showRunner(badRoot), "/home/u", "quyentm.test", ""); err == nil ||
+	if _, err := Show(context.Background(), showRunner(badRoot), testWS(t), "/home/u", "devbox2.test", ""); err == nil ||
 		!strings.Contains(err.Error(), "env-base") || !strings.Contains(err.Error(), "env domain unreadable") {
 		t.Fatalf("show err = %v", err)
 	}
-	if _, err := Status(context.Background(), showRunner(badRoot), t.TempDir(), "quyentm.test"); err == nil ||
+	if _, err := Status(context.Background(), showRunner(badRoot), testWS(t), t.TempDir(), "devbox2.test"); err == nil ||
 		!strings.Contains(err.Error(), "env-base") || !strings.Contains(err.Error(), "env domain unreadable") {
 		t.Fatalf("status err = %v", err)
 	}
 }
 
-// A root without local-env.values.domain uses the resolved domain.
+// A root without <seed app>.values.domain uses the resolved domain.
 func TestEnvDomain_MissingFallsBack(t *testing.T) {
 	root := `{"metadata":{"name":"env-base"},"spec":{"source":{"helm":{"valuesObject":{}}}},"status":{}}`
-	rep, err := Show(context.Background(), showRunner(root), "/home/u", "fallback.test", "")
+	rep, err := Show(context.Background(), showRunner(root), testWS(t), "/home/u", "fallback.test", "")
 	if err != nil {
 		t.Fatal(err)
 	}

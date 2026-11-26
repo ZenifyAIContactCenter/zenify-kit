@@ -56,8 +56,11 @@ func ConfigPath(home string) string { return filepath.Join(infraDir(home), "conf
 
 // ValidateDomain requires a lower-case DNS name under .test.
 func ValidateDomain(d string) error {
-	if len(d) > 253 || !domainRe.MatchString(d) || !strings.HasSuffix(d, ".test") || d == ".test" {
-		return fmt.Errorf("domain %q must be lower-case DNS labels (a-z, 0-9, -) ending in .test", d)
+	if err := validDomainName(d); err != nil {
+		return err
+	}
+	if !strings.HasSuffix(d, ".test") || d == "test" {
+		return fmt.Errorf("domain %q must end in .test", d)
 	}
 	return nil
 }

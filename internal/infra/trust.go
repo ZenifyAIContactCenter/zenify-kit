@@ -29,6 +29,24 @@ const (
 
 var domainRe = regexp.MustCompile(domainPattern)
 
+// maxDomainLen leaves room for one more 63-byte label (an app host such as
+// <svc>-<slug>.) within the 253-byte DNS name limit.
+const maxDomainLen = 253 - 64
+
+// validDomainName requires lower-case DNS labels of 1-63 bytes and a name
+// short enough that every app host under it is still a valid DNS name.
+func validDomainName(d string) error {
+	if len(d) > maxDomainLen || !domainRe.MatchString(d) {
+		return fmt.Errorf("invalid domain %q: lower-case DNS labels (a-z, 0-9, -), at most %d bytes", d, maxDomainLen)
+	}
+	for _, l := range strings.Split(d, ".") {
+		if len(l) > 63 {
+			return fmt.Errorf("invalid domain %q: label %q is longer than 63 bytes", d, l)
+		}
+	}
+	return nil
+}
+
 // FetchCA reads the local CA certificate (PEM) from the cluster.
 func FetchCA(ctx context.Context, r Runner) ([]byte, error) {
 	out, err := kubectl(ctx, r, nil, "-n", PlatformNamespace, "get", "secret", caSecretName,
@@ -88,10 +106,20 @@ func InstallCA(ctx context.Context, r Runner, home string, rawPEM []byte) (chang
 	if err != nil {
 		return false, fmt.Errorf("install CA: %w", err)
 	}
-	if !exists || !samePEM(cur, crt) {
+	fileOK := exists && samePEM(cur, crt)
+	if !fileOK {
 		if err := writeRootFile(ctx, r, caSystemPath, crt); err != nil {
 			return false, fmt.Errorf("install CA: %w", err)
 		}
+		changed = true
+	}
+	// an earlier run may have written the file and failed before the bundle
+	// was regenerated: check the bundle, not only the file
+	inBundle, err := bundleHas(crt)
+	if err != nil {
+		return changed, fmt.Errorf("install CA: %w", err)
+	}
+	if !fileOK || !inBundle {
 		if _, err := r.Run(ctx, nil, "sudo", "update-ca-certificates"); err != nil {
 			return true, fmt.Errorf("install CA: update-ca-certificates: %w", err)
 		}
@@ -176,8 +204,8 @@ func certutilErr(step string, err error) error {
 }
 
 func dnsUnit(domain string) ([]byte, error) {
-	if len(domain) > 253 || !domainRe.MatchString(domain) {
-		return nil, fmt.Errorf("invalid domain %q", domain)
+	if err := validDomainName(domain); err != nil {
+		return nil, err
 	}
 	return renderAsset("dns.service.tmpl", map[string]string{"DNSClusterIP": DNSClusterIP, "Domain": domain})
 }
@@ -253,18 +281,32 @@ func RemoveTrustAndDNS(ctx context.Context, r Runner, home string) error {
 		return fmt.Errorf("remove dns: revert cni0: %w", err)
 	}
 
-	if _, exists, err := readRootFile(ctx, r, caSystemPath); err != nil {
+	copyPath := filepath.Join(infraDir(home), caCopyName)
+	installed, err := os.ReadFile(copyPath) //nolint:gosec // G304 -- the kit's own CA copy
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove CA: read %s: %w", copyPath, err)
+	}
+	_, exists, err := readRootFile(ctx, r, caSystemPath)
+	if err != nil {
 		return fmt.Errorf("remove CA: %w", err)
-	} else if exists {
+	}
+	stale := false // the file is gone but an earlier failed run left it in the bundle
+	if !exists && len(installed) > 0 {
+		if stale, err = bundleHas(installed); err != nil {
+			return fmt.Errorf("remove CA: %w", err)
+		}
+	}
+	if exists {
 		if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", caSystemPath); err != nil {
 			return fmt.Errorf("remove CA: rm: %w", err)
 		}
+	}
+	if exists || stale {
 		if _, err := r.Run(ctx, nil, "sudo", "update-ca-certificates"); err != nil {
 			return fmt.Errorf("remove CA: update-ca-certificates: %w", err)
 		}
 	}
 
-	copyPath := filepath.Join(infraDir(home), caCopyName)
 	if err := os.Remove(copyPath); err != nil && !errors.Is(err, os.ErrNotExist) { // already gone
 		return fmt.Errorf("remove CA: rm %s: %w", copyPath, err)
 	}
@@ -289,14 +331,54 @@ func RestartSplitDNS(ctx context.Context, r Runner) error {
 	return nil
 }
 
-// CATrusted reports whether the system CA store and the user's NSS DB both
-// hold the local CA.
+// Host CA store paths, readable by any user; tests point them elsewhere.
+var (
+	caSystemReadPath = caSystemPath
+	caBundlePath     = "/etc/ssl/certs/ca-certificates.crt"
+)
+
+// bundleHas reports whether the system CA bundle holds crt (whitespace ignored).
+func bundleHas(crt []byte) (bool, error) {
+	b, err := os.ReadFile(caBundlePath)
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", caBundlePath, err)
+	}
+	block, _ := pem.Decode(crt)
+	if block == nil {
+		return false, errors.New("no PEM block")
+	}
+	body := bytes.Join(bytes.Fields(pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: block.Bytes})), nil)
+	body = bytes.TrimSuffix(bytes.TrimPrefix(body, []byte("-----BEGINCERTIFICATE-----")), []byte("-----ENDCERTIFICATE-----"))
+	return bytes.Contains(bytes.Join(bytes.Fields(b), nil), body), nil
+}
+
+// CATrusted reports whether the CA the kit installed (~/.zenify/infra/ca.crt)
+// is the one in the system store, in the generated system bundle, and in the
+// user's NSS DB with the C trust flag. Any store holding another CA, or
+// missing it, is false.
 func CATrusted(ctx context.Context, r Runner, home string) (bool, error) {
-	if _, err := os.Stat(caSystemPath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return false, nil
+	want, err := os.ReadFile(filepath.Join(infraDir(home), caCopyName)) //nolint:gosec // G304 -- the kit's own CA copy
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("ca trust: read CA copy: %w", err)
+	}
+	sys, err := os.ReadFile(caSystemReadPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("ca trust: read %s: %w", caSystemReadPath, err)
+	}
+	if !samePEM(sys, want) {
+		return false, nil
+	}
+	if ok, err := bundleHas(want); err != nil || !ok {
+		if err != nil {
+			return false, fmt.Errorf("ca trust: %w", err)
 		}
-		return false, fmt.Errorf("ca trust: stat %s: %w", caSystemPath, err)
+		return false, nil
 	}
 	if _, err := os.Stat(filepath.Join(nssDir(home), "cert9.db")); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -304,13 +386,35 @@ func CATrusted(ctx context.Context, r Runner, home string) (bool, error) {
 		}
 		return false, fmt.Errorf("ca trust: stat NSS db: %w", err)
 	}
-	if _, err := r.Run(ctx, nil, "certutil", "-L", "-d", "sql:"+nssDir(home), "-n", caNSSNick); err != nil {
+	db := "sql:" + nssDir(home)
+	have, err := r.Run(ctx, nil, "certutil", "-L", "-d", db, "-n", caNSSNick, "-a")
+	if err != nil {
 		if nssNotFound(err) {
 			return false, nil
 		}
+		return false, fmt.Errorf("ca trust: certutil -L -n: %w", err)
+	}
+	if !samePEM(have, want) {
+		return false, nil
+	}
+	list, err := r.Run(ctx, nil, "certutil", "-L", "-d", db)
+	if err != nil {
 		return false, fmt.Errorf("ca trust: certutil -L: %w", err)
 	}
-	return true, nil
+	return nssTrustsCA(list), nil
+}
+
+// nssTrustsCA finds the kit's nickname in `certutil -L` and checks its SSL
+// trust attributes carry C (trusted CA).
+func nssTrustsCA(list []byte) bool {
+	for _, line := range strings.Split(string(list), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 2 && strings.HasPrefix(line, caNSSNick+" ") {
+			ssl, _, _ := strings.Cut(f[len(f)-1], ",")
+			return strings.Contains(ssl, "C")
+		}
+	}
+	return false
 }
 
 // DNSResolves runs a real `resolvectl query host` and reports whether it

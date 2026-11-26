@@ -8,11 +8,13 @@ import (
 	"time"
 )
 
+const testRepoURL = "https://git.example.test/team/charts.git"
+
 // Business rule: the GitHub token must never reach argv (visible in ps and error text).
 func TestSetRepoCredentialTokenOnlyOnStdin(t *testing.T) {
 	const token = "ghp_secretTOKEN123"
 	r := &fakeRunner{}
-	if err := SetRepoCredential(context.Background(), r, token); err != nil {
+	if err := SetRepoCredential(context.Background(), r, testRepoURL, token); err != nil {
 		t.Fatal(err)
 	}
 	inStdin := false
@@ -24,7 +26,7 @@ func TestSetRepoCredentialTokenOnlyOnStdin(t *testing.T) {
 		}
 		if strings.Contains(c.stdin, token) {
 			inStdin = true
-			if !strings.Contains(c.stdin, "argocd.argoproj.io/secret-type: repository") || !strings.Contains(c.stdin, HelmRepoURL) {
+			if !strings.Contains(c.stdin, "argocd.argoproj.io/secret-type: repository") || !strings.Contains(c.stdin, `url: "`+testRepoURL+`"`) {
 				t.Fatalf("secret manifest incomplete:\n%s", c.stdin)
 			}
 		}
@@ -41,7 +43,7 @@ func TestSetRepoCredentialServerSideAndRedacted(t *testing.T) {
 	r := &fakeRunner{respond: func(call) ([]byte, error) {
 		return nil, errors.New("admission denied: password " + token)
 	}}
-	err := SetRepoCredential(context.Background(), r, token)
+	err := SetRepoCredential(context.Background(), r, testRepoURL, token)
 	if err == nil || strings.Contains(err.Error(), token) || !strings.Contains(err.Error(), "***") {
 		t.Fatalf("err = %v", err)
 	}
@@ -51,26 +53,29 @@ func TestSetRepoCredentialServerSideAndRedacted(t *testing.T) {
 }
 
 func TestSetRepoCredentialRejectsEmptyToken(t *testing.T) {
-	if err := SetRepoCredential(context.Background(), &fakeRunner{}, " "); err == nil {
+	if err := SetRepoCredential(context.Background(), &fakeRunner{}, testRepoURL, " "); err == nil {
 		t.Fatal("want error for an empty token")
+	}
+	if err := SetRepoCredential(context.Background(), &fakeRunner{}, "", "tok"); err == nil {
+		t.Fatal("want error for an empty repo URL (infra.json helmRepoURL)")
 	}
 }
 
 // Business rule: the platform app syncs the chart from the requested ref with the user's domain.
 func TestRenderPlatformApp(t *testing.T) {
-	b, err := renderPlatformApp("quyentm.test", "phuthuycoding/feat/local-k3s-infra")
+	b, err := renderPlatformApp(testRepoURL, "devbox2.test", "feat/local")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(b)
 	for _, want := range []string{
 		"name: local-platform",
-		`targetRevision: "phuthuycoding/feat/local-k3s-infra"`,
-		`domain: "quyentm.test"`,
+		`targetRevision: "feat/local"`,
+		`domain: "devbox2.test"`,
 		"path: charts/local-platform",
 		"- ../../envs/local-platform/values.yaml",
 		"namespace: " + PlatformNamespace,
-		"repoURL: " + HelmRepoURL,
+		`repoURL: "` + testRepoURL + `"`,
 		"- ServerSideApply=true",
 		"- CreateNamespace=true",
 		"selfHeal: true",
@@ -83,7 +88,7 @@ func TestRenderPlatformApp(t *testing.T) {
 
 func TestApplyPlatformSendsManifestOnStdin(t *testing.T) {
 	r := &fakeRunner{}
-	if err := ApplyPlatform(context.Background(), r, "quyentm.test", "main"); err != nil {
+	if err := ApplyPlatform(context.Background(), r, testRepoURL, "devbox2.test", "main"); err != nil {
 		t.Fatal(err)
 	}
 	if len(r.calls) != 1 || !strings.Contains(r.calls[0].line(), "--kubeconfig "+K3sKubeconfig+" apply") ||
@@ -92,10 +97,11 @@ func TestApplyPlatformSendsManifestOnStdin(t *testing.T) {
 	}
 }
 
-// Business rule: argocd install is skipped when the pinned version already runs.
+// Business rule: argocd install is skipped when every ArgoCD workload already
+// runs the pinned version.
 func TestInstallArgoPinnedIsNoop(t *testing.T) {
 	r := &fakeRunner{respond: func(c call) ([]byte, error) {
-		if strings.Contains(c.line(), "get deploy argocd-server") {
+		if strings.Contains(c.line(), " get ") && strings.Contains(c.line(), "jsonpath") {
 			return []byte("quay.io/argoproj/argocd:" + ArgoCDVersion), nil
 		}
 		return nil, nil
@@ -110,6 +116,21 @@ func TestInstallArgoPinnedIsNoop(t *testing.T) {
 	// an earlier run may have applied and then failed its wait
 	if !r.ran("kubectl --kubeconfig " + K3sKubeconfig + " -n argocd rollout status statefulset/argocd-application-controller") {
 		t.Fatalf("workloads not awaited: %v", r.calls)
+	}
+}
+
+// Business rule: a partial earlier apply (server pinned, controller missing)
+// must be re-applied, or every rerun fails at the rollout wait.
+func TestInstallArgoReappliesPartialInstall(t *testing.T) {
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if strings.Contains(c.line(), "get deploy/argocd-server") || strings.Contains(c.line(), "get deploy/argocd-repo-server") {
+			return []byte("quay.io/argoproj/argocd:" + ArgoCDVersion), nil
+		}
+		return nil, nil // statefulset/argocd-application-controller absent
+	}}
+	changed, err := InstallArgo(context.Background(), r)
+	if err != nil || !changed || !r.ran("kubectl --kubeconfig "+K3sKubeconfig+" apply --server-side --force-conflicts -n argocd") {
+		t.Fatalf("changed=%v err=%v calls=%v", changed, err, r.calls)
 	}
 }
 

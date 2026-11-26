@@ -75,6 +75,29 @@ func TestInstallCARejectsEmptyPEM(t *testing.T) {
 	}
 }
 
+// TestMain points the host CA store reads at temp files: no test may read or
+// depend on the real /etc/ssl bundle.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "infra-ca-*")
+	if err != nil {
+		panic(err)
+	}
+	caBundlePath = filepath.Join(dir, "ca-certificates.crt")
+	caSystemReadPath = filepath.Join(dir, "zenify-local-ca.crt")
+	if err := os.WriteFile(caBundlePath, nil, 0o600); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(dir) // test scratch
+	os.Exit(code)
+}
+
+// fakeUpdateCA regenerates the fake bundle from the fake system CA file, as
+// update-ca-certificates does.
+func fakeUpdateCA(files map[string]string) error {
+	return os.WriteFile(caBundlePath, []byte(files[caSystemPath]), 0o600)
+}
+
 // nssFake fakes the host files and the NSS db: nss holds the PEM stored under the nickname.
 func nssFake(files map[string]string, nss *string) func(call) ([]byte, error) {
 	hf := writable(files)
@@ -85,6 +108,8 @@ func nssFake(files map[string]string, nss *string) func(call) ([]byte, error) {
 		case c.name == "certutil" && c.args[0] == "-A":
 			*nss = c.stdin
 			return nil, nil
+		case c.name == "sudo" && c.args[0] == "update-ca-certificates":
+			return nil, fakeUpdateCA(files)
 		}
 		return hf(c)
 	}
@@ -192,7 +217,7 @@ func TestInstallCAMissingCertutil(t *testing.T) {
 func TestConfigureSplitDNSUnit(t *testing.T) {
 	files := map[string]string{}
 	r := &fakeRunner{respond: writable(files)}
-	changed, err := ConfigureSplitDNS(context.Background(), r, "quyentm.test")
+	changed, err := ConfigureSplitDNS(context.Background(), r, "devbox2.test")
 	if err != nil || !changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
@@ -201,7 +226,7 @@ func TestConfigureSplitDNSUnit(t *testing.T) {
 		"After=k3s.service", "Wants=k3s.service", "Type=oneshot", "RemainAfterExit=yes",
 		"seq 1 120", "ip link show cni0",
 		"ExecStart=/usr/bin/resolvectl dns cni0 10.43.200.53\n",
-		"ExecStart=/usr/bin/resolvectl domain cni0 '~quyentm.test' '~zenify.internal'\n",
+		"ExecStart=/usr/bin/resolvectl domain cni0 '~devbox2.test' '~zenify.internal'\n",
 		"ExecStart=/usr/bin/resolvectl default-route cni0 false\n",
 		"WantedBy=multi-user.target",
 	} {
@@ -231,11 +256,11 @@ func TestConfigureSplitDNSUnit(t *testing.T) {
 // a changed domain does restart it.
 func TestConfigureSplitDNSRerun(t *testing.T) {
 	files := map[string]string{}
-	if _, err := ConfigureSplitDNS(context.Background(), &fakeRunner{respond: writable(files)}, "quyentm.test"); err != nil {
+	if _, err := ConfigureSplitDNS(context.Background(), &fakeRunner{respond: writable(files)}, "devbox2.test"); err != nil {
 		t.Fatal(err)
 	}
 	r := &fakeRunner{respond: writable(files)}
-	changed, err := ConfigureSplitDNS(context.Background(), r, "quyentm.test")
+	changed, err := ConfigureSplitDNS(context.Background(), r, "devbox2.test")
 	if err != nil || changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
@@ -291,6 +316,13 @@ func writable(files map[string]string) func(call) ([]byte, error) {
 	return func(c call) ([]byte, error) {
 		if c.name == "sudo" {
 			switch c.args[0] {
+			case "update-ca-certificates":
+				return nil, fakeUpdateCA(files)
+			case "rm":
+				for _, p := range c.args[2:] {
+					delete(files, p)
+				}
+				return nil, nil
 			case "tee":
 				files[c.args[1]] = c.stdin
 				return nil, nil
