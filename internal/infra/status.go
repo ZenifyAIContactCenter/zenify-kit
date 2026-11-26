@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -49,8 +50,15 @@ type appList struct {
 }
 
 // envDomain is the domain an env root Application was rendered with
-// (valuesObject.local-env.values.domain), or "".
-func (a appStatus) envDomain() string {
+// (valuesObject.local-env.values.domain), or fallback when the source holds
+// none. A source that does not parse, or spec.sources, is an error.
+func (a appStatus) envDomain(fallback string) (string, error) {
+	if len(a.Spec.Source) == 0 {
+		if len(a.Spec.Sources) > 0 && string(a.Spec.Sources) != "null" {
+			return "", errors.New("spec.sources (multi-source) is not supported, want spec.source")
+		}
+		return fallback, nil
+	}
 	var src struct {
 		Helm struct {
 			ValuesObject struct {
@@ -62,10 +70,13 @@ func (a appStatus) envDomain() string {
 			} `json:"valuesObject"`
 		} `json:"helm"`
 	}
-	if len(a.Spec.Source) == 0 || json.Unmarshal(a.Spec.Source, &src) != nil {
-		return ""
+	if err := json.Unmarshal(a.Spec.Source, &src); err != nil {
+		return "", fmt.Errorf("parse spec.source: %w", err)
 	}
-	return src.Helm.ValuesObject.LocalEnv.Values.Domain
+	if d := src.Helm.ValuesObject.LocalEnv.Values.Domain; d != "" {
+		return d, nil
+	}
+	return fallback, nil
 }
 
 // PlatformTarget is what the deployed local-platform Application runs.
@@ -167,9 +178,9 @@ func Status(ctx context.Context, r Runner, home, domain string) (Report, error) 
 					rep.Platform = st
 				case strings.HasPrefix(name, "env-"):
 					slug := strings.TrimPrefix(name, "env-")
-					envDomain := it.envDomain()
-					if envDomain == "" {
-						envDomain = domain
+					envDomain, err := it.envDomain(domain)
+					if err != nil {
+						return rep, fmt.Errorf("status: application %s: env domain unreadable: %w", name, err)
 					}
 					rep.Envs = append(rep.Envs, EnvStatus{Slug: slug, Sync: st.Sync, Health: st.Health, URLs: EnvURLs(slug, envDomain)})
 				}

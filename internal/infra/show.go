@@ -102,9 +102,9 @@ func Show(ctx context.Context, r Runner, home, domain, slug string) (ShowReport,
 			continue
 		}
 		root := byName[EnvAppName(s)]
-		envDomain := root.envDomain()
-		if envDomain == "" {
-			envDomain = domain
+		envDomain, err := root.envDomain(domain)
+		if err != nil {
+			return rep, fmt.Errorf("show: application %s: env domain unreadable: %w", EnvAppName(s), err)
 		}
 		e := ShowEnv{Slug: s, Sync: root.Status.Sync.Status, Health: root.Status.Health.Status, Apps: []ShowApp{}}
 		for _, a := range envApps {

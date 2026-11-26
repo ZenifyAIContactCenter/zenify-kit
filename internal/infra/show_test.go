@@ -128,3 +128,29 @@ func TestShow_MissingTagIsEmpty(t *testing.T) {
 		}
 	}
 }
+
+// An env's URLs come from its own domain: an unreadable root source must fail
+// naming the app in show and status, not silently use the default domain.
+func TestEnvDomain_UnreadableRootIsAnError(t *testing.T) {
+	badRoot := `{"metadata":{"name":"env-base"},"spec":{"source":{"helm":"oops"}},"status":{}}`
+	if _, err := Show(context.Background(), showRunner(badRoot), "/home/u", "quyentm.test", ""); err == nil ||
+		!strings.Contains(err.Error(), "env-base") || !strings.Contains(err.Error(), "env domain unreadable") {
+		t.Fatalf("show err = %v", err)
+	}
+	if _, err := Status(context.Background(), showRunner(badRoot), t.TempDir(), "quyentm.test"); err == nil ||
+		!strings.Contains(err.Error(), "env-base") || !strings.Contains(err.Error(), "env domain unreadable") {
+		t.Fatalf("status err = %v", err)
+	}
+}
+
+// A root without local-env.values.domain uses the resolved domain.
+func TestEnvDomain_MissingFallsBack(t *testing.T) {
+	root := `{"metadata":{"name":"env-base"},"spec":{"source":{"helm":{"valuesObject":{}}}},"status":{}}`
+	rep, err := Show(context.Background(), showRunner(root), "/home/u", "fallback.test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rep.Envs[0].Apps[0].URL; got != "https://be-base.fallback.test" {
+		t.Fatalf("url = %s", got)
+	}
+}
