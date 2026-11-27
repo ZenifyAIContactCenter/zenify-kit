@@ -1006,7 +1006,6 @@ func TestInfraUp_AppRepoNeedsBuildOrScan(t *testing.T) {
 	}
 }
 
-
 // Config refresh (task 19b): before phase 2 the env's Applications are
 // hard-refreshed and the seed app is synced (also when phase 1 is skipped);
 // that commit lands as a pod annotation on the image apps only.
@@ -1135,9 +1134,9 @@ func TestInfra_InvalidSavedProfileIsBadArgs(t *testing.T) {
 func TestInfraUp_SeedSyncSkippedWhenRevisionUnchanged(t *testing.T) {
 	cases := []struct {
 		name, saved, live string
-		synced        bool
-		wantSync      bool
-		wantSaved     string
+		synced            bool
+		wantSync          bool
+		wantSaved         string
 	}{
 		{"same revision, synced: skip", "rev-1", "rev-1", true, false, "rev-1"},
 		{"newer revision: force", "rev-1", "rev-2", true, true, "rev-abc123"},

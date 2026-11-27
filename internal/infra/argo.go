@@ -374,6 +374,16 @@ func SyncApp(ctx context.Context, r Runner, name string, timeout time.Duration) 
 	if err := json.Unmarshal(a.Spec.Source, &src); err != nil || src.TargetRevision == "" {
 		return "", fmt.Errorf("sync app %s: no spec.source.targetRevision (%v)", name, err)
 	}
+	// A running operation (an auto-sync after the refresh) would swallow the patch:
+	// the controller clears .operation when it finishes. Let it finish first.
+	for p := a.Status.OperationState.Phase; p == "Running" || p == "Terminating"; p = a.Status.OperationState.Phase {
+		if err := sleepCtx(ctx, pollInterval); err != nil {
+			return "", fmt.Errorf("sync app %s: running operation not finished within %s (%w)", name, timeout, err)
+		}
+		if a, err = getApp(ctx, r, name); err != nil {
+			return "", fmt.Errorf("sync app: %w", err)
+		}
+	}
 	prior := a.Status.OperationState.StartedAt
 	patch, err := json.Marshal(map[string]any{"operation": map[string]any{
 		"initiatedBy": map[string]any{"username": "zenify"},

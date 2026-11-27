@@ -361,6 +361,45 @@ func TestSyncApp_WaitsForItsOwnOperation(t *testing.T) {
 	}
 }
 
+// An auto-sync already running (the hard refresh moved the revision) swallows a
+// patched operation: the controller clears .operation when it finishes, so no new
+// operation ever starts. SyncApp must wait for the running one, then start its own.
+func TestSyncApp_WaitsOutARunningOperationBeforePatching(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	app := func(started, phase string) string {
+		return `{"spec":{"source":{"targetRevision":"feat/local-env"}},"status":{"sync":{"status":"Synced","revision":"c0ffee1","comparedTo":{"source":{"targetRevision":"feat/local-env"}}},"health":{"status":"Healthy"},` +
+			`"operationState":{"phase":"` + phase + `","startedAt":"` + started + `"}}}`
+	}
+	patched, preReads := false, 0
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		switch {
+		case strings.Contains(c.line(), " patch "):
+			if preReads < 3 {
+				t.Errorf("patched after %d reads while the auto-sync was still Running", preReads)
+			}
+			patched = true
+			return nil, nil
+		case strings.Contains(c.line(), " get application "):
+			if !patched {
+				if preReads++; preReads < 3 {
+					return []byte(app("2026-11-27T02:47:55Z", "Running")), nil
+				}
+				return []byte(app("2026-11-27T02:47:55Z", "Succeeded")), nil
+			}
+			return []byte(app("2026-11-27T02:48:30Z", "Succeeded")), nil
+		}
+		return nil, nil
+	}}
+	if _, err := SyncApp(context.Background(), r, "local-env-base-local", time.Second); err != nil {
+		t.Fatalf("SyncApp: %v", err)
+	}
+	if !patched {
+		t.Error("never started its own operation")
+	}
+}
+
 // The refresh is asynchronous: the status read right after it must be the
 // refreshed one, so the wait ends only when the controller removed the annotation.
 func TestRefreshApps_WaitsForControllerToFinish(t *testing.T) {
