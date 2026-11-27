@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.83.0
+
+*2026-11-27*
+
+- **Devbox k3s cục bộ bằng một lệnh:** `zenify infra up --local` dựng k3s, ArgoCD, CoreDNS riêng, CA nội bộ (HTTPS), registry và buildkitd trên máy dev, rồi build từ code và deploy env `base` giống dev-N/preview ở `*.zenify.test` (web, be, hub, ...). Lệnh quét `repos/*` của workspace, build mọi repo có `Dockerfile` ở base ref (mỗi image một bước, image lỗi không dừng lệnh, cuối lệnh in bảng `OK|FAIL|SKIP`), deploy phần build được; chạy lại chỉ build phần còn thiếu. `--profile full` dựng đủ bộ app của preview (es, monstache, chatting, notification, message-hub, ott-gateway, worker be/hub); máy cần 12 GB RAM cho `core`, 16 GB cho `full`. `zenify infra show --local` in URL, tài khoản seed và mật khẩu ArgoCD; `zenify infra down --local --purge --apply` gỡ sạch. Cấu hình workspace nằm ở `infra.json` trong knowledge store. Xem [Devbox k3s cục bộ](/guides/local-k3s). ([#416](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/416))
+- **Skill `znf:react-native-patterns`:** code React Native được route sang skill riêng (cấu trúc màn hình, cỡ chữ theo HIG / Material 3) thay vì dùng chung `react-patterns`. Xem [Namespace znf](/concepts/znf-namespace). ([#417](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/417))
+- **`wt new` với worktree sparse không init submodule:** tắt `submodule.recurse` trong worktree đó, nên `git checkout`/`pull` không còn lỗi vì submodule chưa có. ([#421](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/421))
+
 ## v0.82.1
 
 *2026-11-26*
