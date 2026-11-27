@@ -148,3 +148,20 @@ func TestOpenRunLogNeverTruncatesASameSecondLog(t *testing.T) {
 		t.Errorf("first log = %q, %v", b, err)
 	}
 }
+
+// Business rule: the resume hint after Ctrl-C must rerun the same build: a hint
+// without --ref rebuilt from the base ref, and down without --purge left the CA,
+// DNS and k3s behind.
+func TestResumeHintsKeepTheFlags(t *testing.T) {
+	got := upResume("feat/x", "full", map[string]string{"web": "origin/feat/a b", "api": "origin/main"})
+	want := "zenify infra up --local --profile full --chart-ref feat/x --ref api=origin/main --ref 'web=origin/feat/a b'"
+	if got != want {
+		t.Errorf("upResume = %q, want %q", got, want)
+	}
+	if got := upResume("", "", nil); got != "zenify infra up --local" {
+		t.Errorf("plain upResume = %q", got)
+	}
+	if q := shellQuote("it's"); q != `'it'\''s'` {
+		t.Errorf("shellQuote = %s", q)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -299,6 +300,31 @@ func (d infraDeps) upCmd() *cobra.Command {
 	return cmd
 }
 
+// upResume is the command that resumes an interrupted up with the same flags,
+// so a rerun keeps building the chosen refs on the chosen chart ref and profile.
+func upResume(chartRef, profile string, refs map[string]string) string {
+	cmd := "zenify infra up --local"
+	if profile != "" {
+		cmd += " --profile " + shellQuote(profile)
+	}
+	if chartRef != "" {
+		cmd += " --chart-ref " + shellQuote(chartRef)
+	}
+	repos := slices.Sorted(maps.Keys(refs))
+	for _, repo := range repos {
+		cmd += " --ref " + shellQuote(repo+"="+refs[repo])
+	}
+	return cmd
+}
+
+// shellQuote leaves a plain word as is and single-quotes anything else.
+func shellQuote(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/=:@+-") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, profile string, refs map[string]string, verbose bool) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -347,7 +373,7 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef, pro
 		steps = append(steps, "build "+b.Image)
 	}
 	steps = append(steps, "env-ca", "env-phase-1", "env-phase-2", "state")
-	v := newStepView(out, "zenify infra up", "zenify infra up --local", steps, verbose, logFile, logPath)
+	v := newStepView(out, "zenify infra up", upResume(chartRef, profile, refs), steps, verbose, logFile, logPath)
 
 	var unlock func() error
 	defer func() {
@@ -1045,7 +1071,11 @@ func (d infraDeps) runDown(ctx context.Context, out io.Writer, purge, applyFlag 
 	if purge {
 		steps = append(steps, "trust-dns", "k3s", "state")
 	}
-	v := newStepView(out, "zenify infra down", "zenify infra down --local --apply", steps, false, logFile, logPath)
+	resume := "zenify infra down --local --apply"
+	if purge {
+		resume += " --purge"
+	}
+	v := newStepView(out, "zenify infra down", resume, steps, false, logFile, logPath)
 	r := d.runner
 	argo := ""
 	if err := v.run(ctx, "detect", func(ctx context.Context) (stepOutcome, error) {
