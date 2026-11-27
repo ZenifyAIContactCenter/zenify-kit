@@ -107,6 +107,8 @@ export default withMermaid({
         { text: 'Knowledge store và config team', link: '/guides/knowledge-and-config' },
         { text: 'Quan sát và an toàn', link: '/guides/observe-and-safety' },
         { text: 'Chạy với Codex', link: '/guides/codex' },
+        { text: 'Devbox k3s cục bộ', link: '/guides/local-k3s' },
+        { text: 'Làm việc trên devbox k3s', link: '/guides/local-k3s-dev' },
         { text: 'Kiểm thử UI', link: '/workflows/ui-testing' },
         { text: 'Nâng cấp kit', link: '/getting-started/upgrade' } ] },
       { text: 'Tham chiếu', collapsed: false, items: [

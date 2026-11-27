@@ -18,9 +18,10 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 // Stop/Success/Fail are all safe to call with no Start ever having run (e.g. an
 // early-return error path before Start was reached).
 type Spinner struct {
-	w      io.Writer
-	label  string
-	styled bool
+	w       io.Writer
+	label   string
+	labelFn func() string // re-read every frame when set (NewSpinnerFunc)
+	styled  bool
 
 	mu      sync.Mutex
 	stop    chan struct{}
@@ -31,6 +32,12 @@ type Spinner struct {
 // NewSpinner builds a spinner targeting w (pass os.Stderr in production).
 func NewSpinner(w io.Writer, label string) *Spinner {
 	return &Spinner{w: w, label: label, styled: decideStyled(w)}
+}
+
+// NewSpinnerFunc builds a spinner whose label is re-read on every frame, for a
+// label that changes while it runs (a sub-action, an elapsed time).
+func NewSpinnerFunc(w io.Writer, label func() string) *Spinner {
+	return &Spinner{w: w, labelFn: label, styled: decideStyled(w)}
 }
 
 // Start begins animation (no-op when not styled, or when already running).
@@ -60,7 +67,11 @@ func (s *Spinner) Start() {
 			case <-stopCh:
 				return
 			case <-t.C:
-				fmt.Fprintf(s.w, "\r  %s %s", spinnerFrames[i%len(spinnerFrames)], s.label)
+				label := s.label
+				if s.labelFn != nil {
+					label = s.labelFn() + "\033[K" // a shorter label must not leave the old tail
+				}
+				fmt.Fprintf(s.w, "\r  %s %s", spinnerFrames[i%len(spinnerFrames)], label)
 				i++
 			}
 		}

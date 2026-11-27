@@ -1,0 +1,5 @@
+disable:
+  - servicelb
+# cluster-admin credentials: readable by root and the devbox user's group only
+write-kubeconfig-mode: "0640"
+write-kubeconfig-group: {{ printf "%q" .KubeconfigGroup }}

@@ -1,0 +1,16 @@
+[Unit]
+Description=Zenify split DNS for the local k3s environment (per-link on cni0)
+After=k3s.service
+Wants=k3s.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=150
+ExecStartPre=/bin/sh -c 'for i in $$(seq 1 120); do ip link show cni0 >/dev/null 2>&1 && exit 0; sleep 1; done; echo "cni0 did not appear within 120s" >&2; exit 1'
+ExecStart=/usr/bin/resolvectl dns cni0 {{ .DNSClusterIP }}
+ExecStart=/usr/bin/resolvectl domain cni0 '~{{ .Domain }}' '~zenify.internal'
+ExecStart=/usr/bin/resolvectl default-route cni0 false
+
+[Install]
+WantedBy=multi-user.target

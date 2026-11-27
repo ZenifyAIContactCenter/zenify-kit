@@ -1,0 +1,17 @@
+[Unit]
+Description=Zenify firewall for the k3s API server and kubelet ports
+DefaultDependencies=no
+Wants=network-pre.target local-fs.target
+After=local-fs.target
+Before=network-pre.target k3s.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ .NftPath }}
+ExecStop=-/usr/sbin/nft delete table inet {{ .Table }}
+
+[Install]
+WantedBy=multi-user.target
+# k3s must not start unfiltered when the rules fail to load
+RequiredBy=k3s.service

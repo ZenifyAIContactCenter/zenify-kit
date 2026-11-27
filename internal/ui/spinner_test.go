@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -84,4 +85,47 @@ func TestSpinner_DoubleStartStop_NoPanicFramesStop(t *testing.T) {
 	}
 
 	s.Stop() // idempotent: must not panic when called again after already stopped
+}
+
+// A spinner label that changes while it runs (sub-action, elapsed time) is
+// re-read every frame, and each frame clears the rest of the line so a shorter
+// label leaves no tail of the previous one.
+func TestSpinnerFunc_StyledReReadsLabel(t *testing.T) {
+	var buf safeBuffer
+	n := 0
+	var mu sync.Mutex
+	s := &Spinner{w: &buf, styled: true, labelFn: func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		n++
+		if n == 1 {
+			return "1/2 k3s  waiting node Ready 1s"
+		}
+		return "1/2 k3s  2s"
+	}}
+	s.Start()
+	time.Sleep(300 * time.Millisecond)
+	s.Stop()
+	out := buf.String()
+	if !strings.Contains(out, "waiting node Ready 1s\033[K") || !strings.Contains(out, "1/2 k3s  2s\033[K") || !strings.HasSuffix(out, "\r\033[K") {
+		t.Fatalf("frames = %q", out)
+	}
+}
+
+// safeBuffer is a bytes.Buffer safe for the spinner goroutine and the test.
+type safeBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *safeBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
