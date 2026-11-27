@@ -1026,7 +1026,7 @@ func (d infraDeps) downCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&local, "local", false, "target the local k3s devbox (required)")
-	cmd.Flags().BoolVar(&purge, "purge", false, "also remove the CA trust, split DNS, k3s and its firewall, and the state file")
+	cmd.Flags().BoolVar(&purge, "purge", false, "also remove the CA trust, split DNS, k3s and its firewall, the buildkit cache, and the state file")
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "execute (default: preview only)")
 	return cmd
 }
@@ -1038,7 +1038,7 @@ func (d infraDeps) runDown(ctx context.Context, out io.Writer, purge, applyFlag 
 		fmt.Fprintf(out, "would delete Application %s with its resources, and namespace %s\n", infra.PlatformApp, infra.PlatformNamespace)
 		if purge {
 			fmt.Fprintln(out, "would remove the local CA trust (system + NSS) and the split DNS unit")
-			fmt.Fprintln(out, "would run k3s-uninstall.sh, then remove the k3s firewall unit")
+			fmt.Fprintln(out, "would run k3s-uninstall.sh, then remove the k3s firewall unit and the buildkit cache /var/lib/zenify/buildkit")
 			fmt.Fprintln(out, "would remove ~/.zenify/infra/state.json")
 		}
 		return nil

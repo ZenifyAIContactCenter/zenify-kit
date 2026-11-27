@@ -11,7 +11,7 @@ Trang này dành cho người đã dựng devbox bằng [Devbox k3s cục bộ](
 - [`zenify infra up --local`](/reference/cli/zenify_infra_up): cài hoặc sửa k3s, ArgoCD, platform, CA, DNS, build image rồi dựng env `base`. Lệnh hiện từng bước đánh số với việc đang làm và thời gian chờ; log đầy đủ ở `~/.zenify/infra/logs/`. Chạy lại được; bước đã xong in `unchanged`.
 - [`zenify infra status --local`](/reference/cli/zenify_infra_status): sức khoẻ k3s, ArgoCD, platform, từng env, DNS và trust CA.
 - [`zenify infra show --local`](/reference/cli/zenify_infra_show): URL, repo, image tag của từng app, tài khoản seed, và mục `cluster` (kubeconfig, context, node, registry, ArgoCD, OpenBao nếu có).
-- [`zenify infra down --local`](/reference/cli/zenify_infra_down): mặc định chỉ preview; `--apply` xoá env và platform, `--purge` gỡ luôn k3s, CA, DNS và firewall.
+- [`zenify infra down --local`](/reference/cli/zenify_infra_down): mặc định chỉ preview; `--apply` xoá env và platform, `--purge` gỡ luôn k3s, CA, DNS, firewall và cache buildkit (`/var/lib/zenify/buildkit`).
 
 ## kubectl với kubeconfig của devbox
 

@@ -255,6 +255,9 @@ func DeleteNamespace(ctx context.Context, r Runner, ns string) error {
 const (
 	k3sUninstall   = "/usr/local/bin/k3s-uninstall.sh"
 	k3sServiceUnit = "/etc/systemd/system/k3s.service"
+	// buildkitStateDir is the buildkitd cache hostPath (helm envs/local-platform
+	// values.yaml buildkitd hostPath); k3s-uninstall.sh does not remove it
+	buildkitStateDir = "/var/lib/zenify/buildkit"
 )
 
 // k3sGone is nil when neither the k3s binary nor its systemd unit is left.
@@ -295,6 +298,9 @@ func UninstallK3s(ctx context.Context, r Runner) error {
 	}
 	if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", unitPath, nftPath, fwMarker); err != nil {
 		return fmt.Errorf("remove firewall: rm: %w", err)
+	}
+	if _, err := r.Run(ctx, nil, "sudo", "rm", "-rf", buildkitStateDir); err != nil {
+		return fmt.Errorf("remove build cache %s: %w", buildkitStateDir, err)
 	}
 	if _, err := r.Run(ctx, nil, "sudo", "systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("remove firewall: daemon-reload: %w", err)

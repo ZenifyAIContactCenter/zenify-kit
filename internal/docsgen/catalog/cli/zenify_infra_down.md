@@ -15,7 +15,7 @@ Mặc định lệnh chỉ in preview có chữ `PREVIEW` và không chạy lệ
 |---|---|
 | `--local` | Bắt buộc: nhắm devbox k3s cục bộ. |
 | `--apply` | Thực thi. Không có cờ này lệnh chỉ in preview. |
-| `--purge` | Gỡ thêm CA, split DNS, k3s, firewall và file state. |
+| `--purge` | Gỡ thêm CA, split DNS, k3s, firewall, cache buildkit (`/var/lib/zenify/buildkit`) và file state. |
 
 ## Ví dụ
 

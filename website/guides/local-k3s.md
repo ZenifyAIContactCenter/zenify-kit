@@ -31,4 +31,4 @@ zenify infra show --local
 
 ## Gỡ
 
-[`zenify infra down --local`](/reference/cli/zenify_infra_down) chỉ in preview. Thêm `--apply` để xoá env và platform; thêm `--purge` để gỡ luôn k3s, CA, split DNS và firewall.
+[`zenify infra down --local`](/reference/cli/zenify_infra_down) chỉ in preview. Thêm `--apply` để xoá env và platform; thêm `--purge` để gỡ luôn k3s, CA, split DNS, firewall và cache buildkit (`/var/lib/zenify/buildkit`).

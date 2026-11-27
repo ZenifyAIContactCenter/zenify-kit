@@ -115,12 +115,17 @@ func TestUninstallK3sMissingScriptButInstalled(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "k3s-uninstall.sh is missing") {
 		t.Fatalf("err = %v", err)
 	}
-	if r.ran("sudo systemctl disable") || r.ran("sudo rm -f "+unitPath) {
-		t.Fatalf("firewall removed while k3s can still start: %v", r.calls)
+	if r.ran("sudo systemctl disable") || r.ran("sudo rm -f "+unitPath) || r.ran("sudo rm -rf "+buildkitStateDir) {
+		t.Fatalf("firewall or build cache removed while k3s can still start: %v", r.calls)
 	}
 	gone := &fakeRunner{respond: hostFiles(map[string]string{}, "")}
 	if err := UninstallK3s(context.Background(), gone); err != nil {
 		t.Fatalf("k3s already gone: %v", err)
+	}
+	// the buildkitd hostPath lives outside /var/lib/rancher: k3s-uninstall.sh
+	// leaves it, and on the devbox it held 15 GB after a purge
+	if !gone.ran("sudo rm -rf " + buildkitStateDir) {
+		t.Fatalf("purge left the buildkit cache: %v", gone.calls)
 	}
 }
 
