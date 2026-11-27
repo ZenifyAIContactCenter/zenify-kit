@@ -400,6 +400,50 @@ func TestSyncApp_WaitsOutARunningOperationBeforePatching(t *testing.T) {
 	}
 }
 
+// An auto-sync that starts between the read and the patch swallows the patch too:
+// .operation disappears while operationState.startedAt is still the old one. SyncApp
+// requests its operation again; a pending .operation (not yet picked up) is left alone.
+func TestSyncApp_RepatchesOnlyASwallowedOperation(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	app := func(started, operation string) string {
+		return `{` + operation + `"spec":{"source":{"targetRevision":"feat/local-env"}},"status":{"sync":{"status":"Synced","revision":"c0ffee1","comparedTo":{"source":{"targetRevision":"feat/local-env"}}},"health":{"status":"Healthy"},` +
+			`"operationState":{"phase":"Succeeded","startedAt":"` + started + `"}}}`
+	}
+	for _, tc := range []struct {
+		name, pending string
+		wantPatches   int
+	}{
+		{"swallowed", "", 2},
+		{"pending", `"operation":{"sync":{"revision":"feat/local-env"}},`, 1},
+	} {
+		patches, reads := 0, 0
+		r := &fakeRunner{respond: func(c call) ([]byte, error) {
+			switch {
+			case strings.Contains(c.line(), " patch "):
+				patches++
+				return nil, nil
+			case strings.Contains(c.line(), " get application "):
+				if patches == 0 {
+					return []byte(app("2026-11-27T03:00:00Z", "")), nil
+				}
+				if reads++; reads < 3 {
+					return []byte(app("2026-11-27T03:00:00Z", tc.pending)), nil
+				}
+				return []byte(app("2026-11-27T03:01:00Z", "")), nil
+			}
+			return nil, nil
+		}}
+		if _, err := SyncApp(context.Background(), r, "local-env-base-local", time.Second); err != nil {
+			t.Fatalf("%s: SyncApp: %v", tc.name, err)
+		}
+		if tc.name == "swallowed" && patches < tc.wantPatches || tc.name == "pending" && patches != tc.wantPatches {
+			t.Errorf("%s: %d patches, want %d", tc.name, patches, tc.wantPatches)
+		}
+	}
+}
+
 // The refresh is asynchronous: the status read right after it must be the
 // refreshed one, so the wait ends only when the controller removed the annotation.
 func TestRefreshApps_WaitsForControllerToFinish(t *testing.T) {

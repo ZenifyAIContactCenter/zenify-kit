@@ -125,7 +125,9 @@ type appStatus struct {
 		Source  json.RawMessage `json:"source"`
 		Sources json.RawMessage `json:"sources"`
 	} `json:"spec"`
-	Status struct {
+	// Operation is the requested operation; the controller clears it when it ends.
+	Operation json.RawMessage `json:"operation"`
+	Status    struct {
 		Sync struct {
 			Status     string `json:"status"`
 			Revision   string `json:"revision"`
@@ -392,8 +394,14 @@ func SyncApp(ctx context.Context, r Runner, name string, timeout time.Duration) 
 	if err != nil {
 		return "", fmt.Errorf("sync app %s: encode patch: %w", name, err)
 	}
-	if _, err := kubectl(ctx, r, nil, "-n", argoNS, "patch", "application", name, "--type", "merge", "-p", string(patch)); err != nil {
-		return "", fmt.Errorf("sync app %s: start operation: %w", name, err)
+	start := func() error {
+		if _, err := kubectl(ctx, r, nil, "-n", argoNS, "patch", "application", name, "--type", "merge", "-p", string(patch)); err != nil {
+			return fmt.Errorf("sync app %s: start operation: %w", name, err)
+		}
+		return nil
+	}
+	if err := start(); err != nil {
+		return "", err
 	}
 	for {
 		cur, err := getApp(ctx, r, name)
@@ -401,6 +409,13 @@ func SyncApp(ctx context.Context, r Runner, name string, timeout time.Duration) 
 			return "", fmt.Errorf("sync app: %w", err)
 		}
 		op := cur.Status.OperationState
+		// .operation gone with no new operationState: an auto-sync that started
+		// after the read above swallowed the patch. Request ours again.
+		if op.StartedAt == prior && op.Phase != "Running" && op.Phase != "Terminating" && isNullJSON(cur.Operation) {
+			if err := start(); err != nil {
+				return "", err
+			}
+		}
 		// an operationState older than the patch (same startedAt) is not ours
 		if op.StartedAt != "" && op.StartedAt != prior {
 			switch op.Phase {
@@ -426,4 +441,10 @@ done:
 		return "", fmt.Errorf("sync app %s: status.sync.revision is empty after the sync", name)
 	}
 	return cur.Status.Sync.Revision, nil
+}
+
+// isNullJSON reports whether a raw JSON field is absent or null.
+func isNullJSON(b json.RawMessage) bool {
+	t := strings.TrimSpace(string(b))
+	return t == "" || t == "null"
 }
