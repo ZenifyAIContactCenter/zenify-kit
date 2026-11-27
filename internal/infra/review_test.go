@@ -53,6 +53,17 @@ func TestSecretEnvEnvWinsOverUnreadableStore(t *testing.T) {
 	}
 }
 
+// Business rule: the log masks secrets line by line, so a secret spanning lines
+// (a private key) would leak its lines: it is refused, named, never printed.
+func TestSecretEnvRefusesMultiLineSecret(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("SECRET_X", "alpha\nbeta")
+	_, _, _, err := secretEnv(context.Background(), &fakeRunner{}, ws, []string{"secret_x"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "SECRET_X spans several lines") || strings.Contains(err.Error(), "alpha") {
+		t.Fatalf("err = %v, want the key named without its value", err)
+	}
+}
+
 // Business rule: a cut through a secret in a long build log must not leak a
 // fragment of it: redaction runs before the stderr tail is cut.
 func TestRunEnvRedactsBeforeTruncating(t *testing.T) {

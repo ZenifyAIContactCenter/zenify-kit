@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -51,17 +53,30 @@ type stepView struct {
 // tailWidth bounds the build log line shown in the spinner label.
 const tailWidth = 60
 
-// openRunLog creates ~/.zenify/infra/logs/<cmd>-<time>.log.
+// openRunLog creates ~/.zenify/infra/logs/<cmd>-<time>.log, or <cmd>-<time>-<n>.log
+// when a run started in the same second already owns that name: a second run
+// (refused later by the lock) must never truncate the first one's log.
 func openRunLog(home, cmd string) (*os.File, string, error) {
-	p := infra.LogPath(home, cmd+"-"+time.Now().Format("20060102-150405"))
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	base := cmd + "-" + time.Now().Format("20060102-150405")
+	if err := os.MkdirAll(filepath.Dir(infra.LogPath(home, base)), 0o700); err != nil {
 		return nil, "", fmt.Errorf("run log: %w", err)
 	}
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec // G304 -- path built by the kit under its own infra dir
-	if err != nil {
-		return nil, "", fmt.Errorf("run log: %w", err)
+	for n := 1; n <= 100; n++ {
+		name := base
+		if n > 1 {
+			name = fmt.Sprintf("%s-%d", base, n)
+		}
+		p := infra.LogPath(home, name)
+		f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600) //nolint:gosec // G304 -- path built by the kit under its own infra dir
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("run log: %w", err)
+		}
+		return f, p, nil
 	}
-	return f, p, nil
+	return nil, "", fmt.Errorf("run log: %s already has 100 logs this second", base)
 }
 
 // newStepView prints the flow title, the log path and every step as pending.

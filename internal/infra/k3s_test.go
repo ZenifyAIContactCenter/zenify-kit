@@ -244,6 +244,56 @@ func TestInstallK3sRetriesPendingRestart(t *testing.T) {
 	}
 }
 
+// Business rule: a k3s left stopped by a failed restart must be restarted, not
+// waited for: its API never answers, so waiting first blocked the recovery.
+func TestInstallK3sPendingRestartOfStoppedK3sRestartsFirst(t *testing.T) {
+	files := desiredHostFiles(t)
+	files[restartMarker] = "k3s restart pending\n"
+	base := hostFiles(files, K3sVersion)
+	restarted := false
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		switch {
+		case c.line() == "sudo systemctl is-active k3s":
+			if restarted {
+				return []byte("active\n"), nil
+			}
+			return []byte("failed\n"), exitErr(3)
+		case c.line() == "sudo systemctl restart k3s":
+			restarted = true
+		case c.name == "kubectl" && !restarted:
+			t.Fatalf("waited on the API of a stopped k3s: %s", c.line())
+		}
+		return base(c)
+	}}
+	if _, err := InstallK3s(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	if !restarted {
+		t.Fatalf("stopped k3s not restarted: %v", r.calls)
+	}
+}
+
+// Business rule: a k3s still starting ("activating", exit 3) is waited for, never
+// restarted mid-bootstrap (that left a CRD stuck Established=False, 2026-11-26).
+func TestInstallK3sPendingRestartWaitsForActivatingK3s(t *testing.T) {
+	files := desiredHostFiles(t)
+	files[restartMarker] = "k3s restart pending\n"
+	base := hostFiles(files, K3sVersion)
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.line() == "sudo systemctl is-active k3s" {
+			return []byte("activating\n"), exitErr(3)
+		}
+		return base(c)
+	}}
+	if _, err := InstallK3s(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	wait, restart := r.index("kubectl", 0), r.index("sudo systemctl restart k3s", 0)
+	if wait < 0 || restart < 0 || wait > restart {
+		t.Fatalf("activating k3s restarted before the bootstrap wait: %v", r.calls)
+	}
+}
+
 // Business rule: a failed installer keeps the marker so the restart is retried.
 func TestInstallK3sFailedInstallerKeepsMarker(t *testing.T) {
 	files := desiredHostFiles(t)

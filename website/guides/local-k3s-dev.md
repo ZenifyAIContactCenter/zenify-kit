@@ -90,7 +90,8 @@ Trong manifest dùng `image: registry.zenify.internal:5000/<name>:<tag>`. `zenif
 ## File cấu hình và trạng thái
 
 - `infra.json` (repo helm, image cần build, app của env, tài khoản seed) nằm ở `<knowledge store>/.config/infra.json`, thường là `~/.zenify/knowledge/.config/infra.json`. Schema xem [`zenify infra`](/reference/cli/zenify_infra).
-- `~/.zenify/infra/config.json`: domain, số env tối đa, chart ref (đổi bằng [`zenify infra config`](/reference/cli/zenify_infra_config)).
+- `~/.zenify/infra/config.json`: domain, số env tối đa, chart ref. [`zenify infra config`](/reference/cli/zenify_infra_config) chỉ đổi domain và số env tối đa; chart ref chọn bằng `zenify infra up --local --chart-ref <ref>`.
+- `~/.zenify/infra/logs/`: hai lần chạy bắt đầu cùng một giây thì lần sau thêm hậu tố `-2`, `-3`, ... vào tên log, không ghi đè log của lần trước.
 - `~/.zenify/infra/logs/up-<thời điểm>.log`, `down-<thời điểm>.log`: log đầy đủ của từng lần chạy, gồm log build (secret đã che).
 - `~/.zenify/infra/state.json`: domain, phiên bản k3s, ArgoCD của lần `up` thành công gần nhất.
 

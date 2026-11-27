@@ -588,7 +588,7 @@ func TestScanTargets(t *testing.T) {
 		len(a.OptSecrets) != 1 || a.OptSecrets[0] != "npm_token" || a.Tag != "" || a.Target != "" {
 		t.Fatalf("scanned default target = %+v", a)
 	}
-	if !r.ran("git -C " + filepath.Join(ws, "repos", "a") + " fetch --no-tags origin main") {
+	if !r.ran("git -C " + filepath.Join(ws, "repos", "a") + " fetch --no-tags origin -- main") {
 		t.Fatal("no fetch of just the base branch before the Dockerfile probe: a stale ref would hide a new Dockerfile")
 	}
 }
@@ -704,8 +704,29 @@ func TestScanTargetsGitCallsBoundedAndNonInteractive(t *testing.T) {
 			t.Errorf("git env = %v", e)
 		}
 	}
-	if !r.ran("git -C "+filepath.Join(ws, "repos", "b")+" fetch --no-tags origin") || r.ran("git -C "+filepath.Join(ws, "repos", "b")+" fetch --no-tags origin v1.2.3") {
-		t.Errorf("non-origin ref must fetch origin without a branch: %v", r.calls)
+	// a tag pushed after the clone is fetched only without --no-tags
+	b := "git -C " + filepath.Join(ws, "repos", "b") + " fetch"
+	if !r.ran(b+" origin") || r.ran(b+" --no-tags") || r.ran(b+" origin v1.2.3") {
+		t.Errorf("non-origin ref must fetch origin with its tags: %v", r.calls)
+	}
+}
+
+// A worktree.json baseRef like origin/--upload-pack=<cmd> must never reach git as
+// an option: it would run <cmd> during the scan (Zenie review, kit#416).
+func TestScanTargetsRefCannotInjectGitOptions(t *testing.T) {
+	ws := fakeWorkspace(t)
+	gitRepo(t, ws, "a")
+	r := &fakeRunner{}
+	w := testWS(t)
+	w.EnvApps = append(w.EnvApps, WorkspaceApp{Key: "a-svc", Phase: 2, Repo: "a"})
+	_, err := ScanTargets(context.Background(), r, w, ws, "d.test", "base", map[string]string{"a": "origin/--upload-pack=touch /tmp/pwned"})
+	if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+		t.Errorf("err = %v, want the option-like branch refused", err)
+	}
+	for _, c := range r.calls {
+		if strings.Contains(c.line(), "--upload-pack") {
+			t.Errorf("option reached git: %s", c.line())
+		}
 	}
 }
 

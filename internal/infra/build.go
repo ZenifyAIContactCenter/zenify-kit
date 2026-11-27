@@ -215,10 +215,15 @@ func hasDockerfileAtBase(ctx context.Context, r Runner, root, repo, ref string) 
 			return false, fmt.Errorf("scan %s: no .claude/worktree.json baseRef and %w", repo, err)
 		}
 	}
-	// fetch only the base branch, not every branch and tag of the remote
-	fetch := []string{"-C", root, "fetch", "--no-tags", "origin"}
+	// fetch only the base branch, not every branch and tag of the remote; any
+	// other ref (a tag, a sha) needs the plain fetch, which brings new tags. "--"
+	// keeps the branch a refspec even if it looks like an option.
+	fetch := []string{"-C", root, "fetch", "origin"}
 	if br, ok := strings.CutPrefix(ref, "origin/"); ok && br != "" {
-		fetch = append(fetch, br)
+		if strings.HasPrefix(br, "-") {
+			return false, fmt.Errorf("scan %s: branch of ref %q must not start with '-'", repo, ref)
+		}
+		fetch = []string{"-C", root, "fetch", "--no-tags", "origin", "--", br}
 	}
 	// a failed fetch (network) is not fatal: probe the ref already fetched; the
 	// build fetches again and fails that image alone if the network is still down
@@ -469,7 +474,7 @@ func secretEnv(ctx context.Context, r Runner, ws string, ids, optional []string)
 	var f *devenv.File
 	// the process env wins; the store is read only for a key the env lacks, so
 	// an unreadable store never blocks secrets the env already provides
-	lookup := func(key string) (string, error) {
+	get := func(key string) (string, error) {
 		if v := os.Getenv(key); v != "" {
 			return v, nil
 		}
@@ -481,6 +486,14 @@ func secretEnv(ctx context.Context, r Runner, ws string, ids, optional []string)
 			f = loaded
 		}
 		return devenv.Lookup(os.Getenv, f)(key), nil
+	}
+	// the log masks a secret per output line, so a value spanning lines would leak
+	lookup := func(key string) (string, error) {
+		v, err := get(key)
+		if err == nil && strings.ContainsAny(v, "\r\n") {
+			return "", fmt.Errorf("%s spans several lines: build secrets must be one line", key)
+		}
+		return v, err
 	}
 	for _, id := range optional {
 		key := strings.ToUpper(id)

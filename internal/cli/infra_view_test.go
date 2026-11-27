@@ -123,3 +123,28 @@ func TestStepViewAddSteps_MissingAnchorAppends(t *testing.T) {
 		t.Errorf("steps = %s", got)
 	}
 }
+
+// Business rule: a second up started in the same second (refused later by the
+// lock) must not truncate the log of the run already in progress.
+func TestOpenRunLogNeverTruncatesASameSecondLog(t *testing.T) {
+	home := t.TempDir()
+	f1, p1, err := openRunLog(home, "up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f1.Close()
+	if _, err := f1.WriteString("first run\n"); err != nil {
+		t.Fatal(err)
+	}
+	f2, p2, err := openRunLog(home, "up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f2.Close()
+	if p1 == p2 {
+		t.Fatalf("both runs got %s", p1)
+	}
+	if b, err := os.ReadFile(p1); err != nil || string(b) != "first run\n" {
+		t.Errorf("first log = %q, %v", b, err)
+	}
+}

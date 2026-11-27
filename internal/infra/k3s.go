@@ -181,7 +181,7 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		// k3s.service requires the firewall unit, so restarting it restarts k3s:
 		// never cut off a k3s that is still bootstrapping
 		if ver != "" {
-			if err := waitBootstrapped(ctx, r); err != nil {
+			if err := waitIfRunning(ctx, r); err != nil {
 				return changed, fmt.Errorf("install k3s: before firewall restart: %w", err)
 			}
 		}
@@ -243,7 +243,7 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 		// the installer is not run at the pinned version, so a config.yaml or
 		// registries.yaml change needs an explicit restart, once k3s has
 		// finished bootstrapping
-		if err := waitBootstrapped(ctx, r); err != nil {
+		if err := waitIfRunning(ctx, r); err != nil {
 			return true, fmt.Errorf("install k3s: before restart: %w", err)
 		}
 		report(ctx, "restarting k3s")
@@ -306,6 +306,22 @@ func waitNodeReady(ctx context.Context, r Runner) error {
 
 // waitBootstrapped waits until k3s finished starting: the API answers, every
 // node is Ready and the k3s CRDs are Established. Only then is a restart safe.
+// waitIfRunning waits for k3s to finish bootstrapping before it is restarted;
+// a stopped one (inactive or failed after an earlier restart) is restarted
+// straight away, since its API never answers. "activating" (exit 3 too) is
+// still starting and is waited for.
+func waitIfRunning(ctx context.Context, r Runner) error {
+	out, err := r.Run(ctx, nil, "sudo", "systemctl", "is-active", "k3s")
+	switch strings.TrimSpace(string(out)) {
+	case "inactive", "failed":
+		return nil
+	}
+	if err != nil && exitCode(err) <= 0 {
+		return fmt.Errorf("systemctl is-active k3s: %w", err)
+	}
+	return waitBootstrapped(ctx, r)
+}
+
 func waitBootstrapped(ctx context.Context, r Runner) error {
 	if err := waitNodeReady(ctx, r); err != nil {
 		return err
