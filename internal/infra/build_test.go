@@ -634,8 +634,37 @@ func TestScanTargetsUnusedRepoFailureIsWarning(t *testing.T) {
 		t.Errorf("targets = %+v, want builds[] then b only", got)
 	}
 	warn := strings.Join(p.subs, "\n")
-	if !strings.Contains(warn, "scan: skipping a:") || strings.Contains(warn, "s3cret") || !strings.Contains(warn, "https://***@github.com") {
+	if !strings.Contains(warn, "scan: a fetch failed") || strings.Contains(warn, "s3cret") || !strings.Contains(warn, "https://***@github.com") {
 		t.Errorf("warning = %q, want a skip line without the URL credentials", warn)
+	}
+}
+
+// A network failure fetching a deployed repo must not stop up: the scan probes the
+// ref fetched earlier and the repo stays a build target (the build retries the fetch).
+func TestScanTargetsFetchFailureProbesLocalRef(t *testing.T) {
+	ws := fakeWorkspace(t)
+	gitRepo(t, ws, "a")
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		switch {
+		case strings.Contains(c.line(), "repos/a fetch"):
+			return nil, errors.New("fatal: unable to access 'https://github.com/x/a.git/': Recv failure: Connection reset by peer")
+		case c.args[2] == "ls-tree" && strings.HasSuffix(c.args[1], "repos/a"):
+			return []byte("Dockerfile\n"), nil
+		}
+		return nil, nil
+	}}
+	w := testWS(t)
+	w.EnvApps = append(w.EnvApps, WorkspaceApp{Key: "a-svc", Phase: 2, Repo: "a"})
+	p := &recProgress{}
+	got, err := ScanTargets(WithProgress(context.Background(), p), r, w, ws, "d.test", "base", map[string]string{"a": "origin/main"})
+	if err != nil {
+		t.Fatalf("a fetch failure stopped the scan: %v", err)
+	}
+	if last := got[len(got)-1]; last.Repo != "a" {
+		t.Errorf("targets = %+v, want a kept as a build target", got)
+	}
+	if warn := strings.Join(p.subs, "\n"); !strings.Contains(warn, "a fetch failed, probing the local origin/main") || !strings.Contains(warn, "Connection reset") {
+		t.Errorf("warning = %q, want the fetch error named", warn)
 	}
 }
 

@@ -220,8 +220,10 @@ func hasDockerfileAtBase(ctx context.Context, r Runner, root, repo, ref string) 
 	if br, ok := strings.CutPrefix(ref, "origin/"); ok && br != "" {
 		fetch = append(fetch, br)
 	}
+	// a failed fetch (network) is not fatal: probe the ref already fetched; the
+	// build fetches again and fails that image alone if the network is still down
 	if _, err := r.Run(ctx, nil, "git", fetch...); err != nil {
-		return false, fmt.Errorf("scan %s: fetch: %w", repo, err)
+		report(ctx, "scan: %s fetch failed, probing the local %s: %v", repo, ref, err)
 	}
 	out, err := r.Run(ctx, nil, "git", "-C", root, "ls-tree", "--name-only", ref, "--", "Dockerfile")
 	if err != nil {
