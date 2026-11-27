@@ -304,8 +304,6 @@ func waitNodeReady(ctx context.Context, r Runner) error {
 	}
 }
 
-// waitBootstrapped waits until k3s finished starting: the API answers, every
-// node is Ready and the k3s CRDs are Established. Only then is a restart safe.
 // waitIfRunning waits for k3s to finish bootstrapping before it is restarted;
 // a stopped one (inactive or failed after an earlier restart) is restarted
 // straight away, since its API never answers. "activating" (exit 3 too) is
@@ -322,6 +320,8 @@ func waitIfRunning(ctx context.Context, r Runner) error {
 	return waitBootstrapped(ctx, r)
 }
 
+// waitBootstrapped waits until k3s finished starting: the API answers, every
+// node is Ready and the k3s CRDs are Established. Only then is a restart safe.
 func waitBootstrapped(ctx context.Context, r Runner) error {
 	if err := waitNodeReady(ctx, r); err != nil {
 		return err
