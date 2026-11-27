@@ -26,7 +26,8 @@ func TestSkillRoutingNamesResolve(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"mongo-data-safety", "sql-data-safety", "mongoose-modeling",
-		"service-integration", "express-service-patterns", "nestjs-patterns", "react-patterns"} {
+		"service-integration", "express-service-patterns", "nestjs-patterns", "react-patterns",
+		"react-native-patterns"} {
 		if !seen[want] {
 			t.Errorf("skill-routing.md must route to znf:%s", want)
 		}

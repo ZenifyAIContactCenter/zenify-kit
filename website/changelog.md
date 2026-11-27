@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.82.1
+
+*2026-11-26*
+
+- **Hotfix lớn không còn chờ lead duyệt ở chế độ tự động:** khi hotfix đổi quá 3 file hoặc `/gate` báo tài nguyên dùng chung (bước 9 của `hotfix`), worker không gửi `zenify await irreversible` nữa mà ghi `Ruling:` rồi mở PR vào base hotfix. Phần Rủi ro của PR ghi số file, kết quả `/gate` và khuyến nghị revert. Mở PR chưa deploy gì, merge vẫn do người quyết. Hotfix chạy tay vẫn hỏi như cũ.
+
 ## v0.82.0
 
 *2026-11-25*

@@ -25,6 +25,7 @@ var codingAnchors = map[string][]string{
 	"nestjs-patterns":          {"module", "guard", "controller"},
 	"express-service-patterns": {"middleware", "controller", "envelope"},
 	"react-patterns":           {"component", "hook", "form"},
+	"react-native-patterns":    {"stylesheet", "native", "permission"},
 	"service-integration":      {"idempoten", "publish", "contract"},
 }
 

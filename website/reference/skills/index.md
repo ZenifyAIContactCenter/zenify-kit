@@ -32,6 +32,7 @@ Mọi skill của kit, kể cả bộ skill coding theo stack (Express, NestJS, 
 | [/znf:pr-review](./pr-review) | Vòng xử lý review của bot sau khi PR đã mở: chờ đúng check review mà project khai báo trên commit cuối, sửa hoặc decline những gì check đó chặn, push rồi chờ lại, tối đa 3 vòng; không bao giờ merge. |
 | [/znf:prune-memory](./prune-memory) | Rà soát và dọn bộ nhớ tự động trong một lượt, gộp bản trùng và xoá ghi chú đã cũ. |
 | [/znf:qa](./qa) | Run QA viết kịch bản nghiệm thu đóng băng trước khi có code dev, viết journey phải đỏ trên code gốc, rồi gắn journey vào code đã xong mà không sửa kết quả mong đợi. |
+| [/znf:react-native-patterns](./react-native-patterns) | Quy ước viết app React Native — token màu/chữ thay mã hex, đổi JS hay đổi native, module native iOS/Android đối xứng, quyền, push nền, log bản release. |
 | [/znf:react-patterns](./react-patterns) | Quy ước viết frontend React (Vite/TanStack) — state, bảng phân trang, form, axios interceptor, i18n. |
 | [/znf:research](./research) | Research có kiểm chứng: worker tìm và trích dẫn nguyên văn kèm URL đã fetch, một lượt haiku fetch lại mọi URL, kết quả ghi thành file trong docs/research (local, không sync). |
 | [/znf:retro](./retro) | Rút những bài học tốn kém của phiên về đúng một nơi (check, rule, CLAUDE.md hoặc memory), đưa một danh sách để bạn duyệt trước khi ghi. |

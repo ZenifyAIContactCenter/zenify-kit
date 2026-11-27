@@ -117,3 +117,24 @@ func TestAutonomousDecideBeforeAsking(t *testing.T) {
 		`"situation":`, `"consequence":`, `"label":`, `"detail":`,
 	})
 }
+
+// hotfix step 9 (too large or shared resource) opens the PR with the risk written down: a PR
+// into the hotfix base deploys nothing, so it is never an irreversible await.
+func TestAutonomousHotfixStep9NotIrreversible(t *testing.T) {
+	s := syncedAsset(t, "skills/_shared/autonomous.md")
+	for _, line := range strings.Split(s, "\n") {
+		if strings.Contains(line, "step 9") && (strings.Contains(line, "zenify await") || !strings.HasPrefix(line, "Not a stop: ")) {
+			t.Errorf("hotfix step 9 must appear only in the \"Not a stop\" paragraph, never with an await: %s", line)
+		}
+	}
+	if n, g := strings.Index(s, "Not a stop: `hotfix` step 9"), strings.Index(s, "## Gate map"); n < 0 || n > g || n < strings.Index(s, "## Precedence") {
+		t.Errorf("the step 9 paragraph must sit after the Precedence list and before ## Gate map")
+	}
+	assertContainsAll(t, "autonomous.md", s, []string{
+		"`hotfix` step 9 (over 3 files, no count, or a shared resource) is not a gate here",
+		"opening a PR into `$REF` deploys nothing",
+		"Write a `Ruling:` in the ship pack's `## Intent` and ship",
+		"re-run the count and `/gate` after each fix wave",
+		"the PR body's risk section names the file count, what `/gate` reported, and that revert is recommended",
+	})
+}
