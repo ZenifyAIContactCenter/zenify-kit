@@ -299,11 +299,11 @@ func UninstallK3s(ctx context.Context, r Runner) error {
 	if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", unitPath, nftPath, fwMarker); err != nil {
 		return fmt.Errorf("remove firewall: rm: %w", err)
 	}
-	if _, err := r.Run(ctx, nil, "sudo", "rm", "-rf", buildkitStateDir); err != nil {
-		return fmt.Errorf("remove build cache %s: %w", buildkitStateDir, err)
-	}
 	if _, err := r.Run(ctx, nil, "sudo", "systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("remove firewall: daemon-reload: %w", err)
+	}
+	if _, err := r.Run(ctx, nil, "sudo", "rm", "-rf", buildkitStateDir); err != nil {
+		return fmt.Errorf("remove build cache %s: %w", buildkitStateDir, err)
 	}
 	return nil
 }
